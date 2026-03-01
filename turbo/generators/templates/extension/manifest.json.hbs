@@ -16,13 +16,7 @@
   }{{#if hasBackground}},
   "background": {
     "service_worker": "background.js"
-  }{{/if}}{{#if hasContentScript}},
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
-    }
-  ]{{/if}},
+  }{{/if}},
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

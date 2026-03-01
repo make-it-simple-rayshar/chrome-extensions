@@ -29,27 +29,27 @@ Filter to one extension: `turbo run lint --filter=@rayshar/full-page-screenshot`
 ## Adding a New Extension
 
 Run `pnpm gen:extension` and follow the prompts. This creates:
-- `apps/<name>/` with manifest.json, scripts, icons, and CLAUDE.md
-- Vanilla JS (default) or TypeScript scaffold
-- Proper package.json with lint/package/clean scripts
+- `apps/<name>/` with React + Vite + Tailwind + shadcn/ui (DarkMatter theme)
+- Three Vite builds: popup (React), background (IIFE), content (IIFE)
+- shadcn/ui components (Button, Card) + DarkMatter theme auto-installed
+- Proper package.json with build/dev/lint/package scripts
 
 ## Conventions
 
 - **Manifest V3** — all extensions use Chrome Manifest V3
-- **Vanilla JS by default** — TypeScript is optional, enabled per-extension via generator
+- **React + Vite + Tailwind + shadcn/ui** — all extensions use this stack
+- **DarkMatter theme** — default shadcn theme from tweakcn
 - **Biome** for linting and formatting (single quotes, semicolons, 2-space indent)
 - **Package scope**: `@rayshar/<extension-name>`
-- **No build step for vanilla JS** — files are loaded directly by Chrome
 - **Downloads go through `chrome.downloads` API**, not `<a>` tag hacks
 
 ## Per-Extension Scripts
 
-Every extension has: `clean`, `lint`, `lint:fix`, `package`
-TypeScript extensions additionally have: `build`, `dev`, `type-check`
+Every extension has: `build`, `dev`, `type-check`, `clean`, `lint`, `lint:fix`, `package`
 
 ## Chrome Extension Patterns
 
-- **Service worker** (`background.js`): No DOM access. Use `chrome.*` APIs only. Runs in background, may be terminated by Chrome at any time.
-- **Content script** (`content.js`): Injected into web pages. Has DOM access but limited `chrome.*` API. Always wrap in IIFE with injection guard (`window.__extensionInjected`).
-- **Popup** (`popup.html/js`): Extension toolbar popup. Communicates with background via `chrome.runtime.sendMessage`.
+- **Service worker** (`src/background/index.ts`): No DOM access. Use `chrome.*` APIs only. Built as IIFE via `vite.config.background.ts`.
+- **Content script** (`src/content/index.ts`): Injected into web pages. Has DOM access but limited `chrome.*` API. Always wrap in IIFE with injection guard. Built as IIFE via `vite.config.content.ts`.
+- **Popup** (`src/popup/`): React UI with shadcn/ui components. Communicates with background via `chrome.runtime.sendMessage`. Built via `vite.config.ts`.
 - **Message passing**: `chrome.runtime.sendMessage` (popup↔background), `chrome.tabs.sendMessage` (background→content). Return `true` from listener for async `sendResponse`.

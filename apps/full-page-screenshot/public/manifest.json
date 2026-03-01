@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Full Page Screenshot (Rayshar)",
-  "version": "1.0.0",
-  "description": "Capture full-page screenshots with scroll-and-stitch",
-  "permissions": ["activeTab", "scripting", "downloads"],
+  "version": "2.1.0",
+  "description": "Capture full-page screenshots with scroll-and-stitch — supports inner scrollable containers",
+  "permissions": ["activeTab", "scripting", "downloads", "webNavigation"],
+  "host_permissions": ["<all_urls>"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

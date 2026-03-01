@@ -2,19 +2,38 @@
 
 {{ description }}
 
+## Stack
+
+React + Vite + Tailwind CSS v4 + shadcn/ui (DarkMatter theme)
+
 ## Architecture
 
 {{#if hasPopup}}
-- `popup.html` / `popup.js` — Extension popup UI
+- `src/popup/` — React popup UI (App.tsx, main.tsx, index.css)
 {{/if}}
 {{#if hasBackground}}
-- `background.js` — Service worker (no DOM access, runs in background)
+- `src/background/index.ts` — Service worker (no DOM access, runs in background)
 {{/if}}
 {{#if hasContentScript}}
-- `content.js` — Content script (injected into web pages, has DOM access)
+- `src/content/index.ts` — Content script (injected into web pages, has DOM access)
 {{/if}}
-- `manifest.json` — Chrome extension manifest (Manifest V3)
-- `icons/` — Extension icons (16, 48, 128px)
+- `src/components/ui/` — shadcn/ui components
+- `src/lib/utils.ts` — cn() helper
+- `public/manifest.json` — Chrome extension manifest (Manifest V3)
+- `public/icons/` — Extension icons (16, 48, 128px)
+
+## Build
+
+Three Vite configs:
+- `vite.config.ts` — Popup (React + Tailwind, ES modules)
+{{#if hasBackground}}
+- `vite.config.background.ts` — Service worker (IIFE, single file)
+{{/if}}
+{{#if hasContentScript}}
+- `vite.config.content.ts` — Content script (IIFE, single file)
+{{/if}}
+
+Output: `dist/` with popup.html, assets/, background.js, content.js, manifest.json, icons/
 
 ## Permissions
 
@@ -24,10 +43,8 @@
 
 ## Scripts
 
+- `pnpm build` — Build all (popup + background + content)
+- `pnpm dev` — Watch mode for all builds
+- `pnpm type-check` — Type check without emit
 - `pnpm lint` — Lint with Biome
 - `pnpm package` — Create ZIP for Chrome Web Store
-{{#if useTypeScript}}
-- `pnpm build` — Compile TypeScript
-- `pnpm dev` — Watch mode
-- `pnpm type-check` — Type check without emit
-{{/if}}

@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import type { PlopTypes } from '@turbo/gen';
 
 function toTitleCase(str: string): string {
@@ -13,8 +15,37 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
     return context.map((item) => `"${item}"`).join(', ');
   });
 
+  plop.setActionType('setup-shadcn', (answers) => {
+    const cwd = resolve('apps', answers.name as string);
+    const root = resolve('.');
+
+    // Install dependencies first
+    execFileSync('pnpm', ['install'], { cwd: root, stdio: 'inherit' });
+
+    // Initialize shadcn with defaults
+    execFileSync('pnpm', ['dlx', 'shadcn@latest', 'init', '--yes', '--defaults'], {
+      cwd,
+      stdio: 'inherit',
+    });
+
+    // Install DarkMatter theme
+    execFileSync(
+      'pnpm',
+      ['dlx', 'shadcn@latest', 'add', 'https://tweakcn.com/r/themes/darkmatter.json'],
+      { cwd, stdio: 'inherit', input: 'y\n' },
+    );
+
+    // Add base UI components
+    execFileSync('pnpm', ['dlx', 'shadcn@latest', 'add', 'button', 'card'], {
+      cwd,
+      stdio: 'inherit',
+    });
+
+    return 'shadcn setup complete';
+  });
+
   plop.setGenerator('extension', {
-    description: 'Create a new Chrome extension',
+    description: 'Create a new Chrome extension (React + Vite + shadcn)',
     prompts: [
       {
         type: 'input',
@@ -54,12 +85,6 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
       },
       {
         type: 'confirm',
-        name: 'useTypeScript',
-        message: 'Use TypeScript?',
-        default: false,
-      },
-      {
-        type: 'confirm',
         name: 'hasPopup',
         message: 'Include popup UI?',
         default: true,
@@ -82,7 +107,7 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
       const actions: PlopTypes.ActionType[] = [];
       const base = 'apps/{{ name }}';
 
-      // Always: package.json, manifest.json, CLAUDE.md
+      // Always: package.json, tsconfig.json, manifest.json, CLAUDE.md
       actions.push(
         {
           type: 'add',
@@ -91,7 +116,12 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
         },
         {
           type: 'add',
-          path: `${base}/manifest.json`,
+          path: `${base}/tsconfig.json`,
+          templateFile: 'templates/extension/tsconfig.json.hbs',
+        },
+        {
+          type: 'add',
+          path: `${base}/public/manifest.json`,
           templateFile: 'templates/extension/manifest.json.hbs',
         },
         {
@@ -101,58 +131,80 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
         },
       );
 
-      // Icons (copy placeholders)
+      // Icons (copy to public/)
       for (const size of ['16', '48', '128']) {
         actions.push({
           type: 'add',
-          path: `${base}/icons/icon${size}.png`,
+          path: `${base}/public/icons/icon${size}.png`,
           templateFile: `templates/extension/icons/icon${size}.png`,
         });
       }
 
-      // Popup
+      // Popup (always React + Vite)
       if (answers.hasPopup) {
-        actions.push({
-          type: 'add',
-          path: `${base}/popup.html`,
-          templateFile: 'templates/extension/popup.html.hbs',
-        });
-        const ext = answers.useTypeScript ? 'ts' : 'js';
-        actions.push({
-          type: 'add',
-          path: `${base}/popup.${ext}`,
-          templateFile: `templates/extension/popup.${ext}.hbs`,
-        });
+        actions.push(
+          {
+            type: 'add',
+            path: `${base}/popup.html`,
+            templateFile: 'templates/extension/popup.html.hbs',
+          },
+          {
+            type: 'add',
+            path: `${base}/vite.config.ts`,
+            templateFile: 'templates/extension/vite.config.ts.hbs',
+          },
+          {
+            type: 'add',
+            path: `${base}/src/popup/main.tsx`,
+            templateFile: 'templates/extension/src/popup/main.tsx.hbs',
+          },
+          {
+            type: 'add',
+            path: `${base}/src/popup/App.tsx`,
+            templateFile: 'templates/extension/src/popup/App.tsx.hbs',
+          },
+          {
+            type: 'add',
+            path: `${base}/src/popup/index.css`,
+            templateFile: 'templates/extension/src/popup/index.css.hbs',
+          },
+        );
       }
 
-      // Background
+      // Background service worker (IIFE build)
       if (answers.hasBackground) {
-        const ext = answers.useTypeScript ? 'ts' : 'js';
-        actions.push({
-          type: 'add',
-          path: `${base}/background.${ext}`,
-          templateFile: `templates/extension/background.${ext}.hbs`,
-        });
+        actions.push(
+          {
+            type: 'add',
+            path: `${base}/vite.config.background.ts`,
+            templateFile: 'templates/extension/vite.config.background.ts.hbs',
+          },
+          {
+            type: 'add',
+            path: `${base}/src/background/index.ts`,
+            templateFile: 'templates/extension/src/background/index.ts.hbs',
+          },
+        );
       }
 
-      // Content script
+      // Content script (IIFE build)
       if (answers.hasContentScript) {
-        const ext = answers.useTypeScript ? 'ts' : 'js';
-        actions.push({
-          type: 'add',
-          path: `${base}/content.${ext}`,
-          templateFile: `templates/extension/content.${ext}.hbs`,
-        });
+        actions.push(
+          {
+            type: 'add',
+            path: `${base}/vite.config.content.ts`,
+            templateFile: 'templates/extension/vite.config.content.ts.hbs',
+          },
+          {
+            type: 'add',
+            path: `${base}/src/content/index.ts`,
+            templateFile: 'templates/extension/src/content/index.ts.hbs',
+          },
+        );
       }
 
-      // TypeScript config
-      if (answers.useTypeScript) {
-        actions.push({
-          type: 'add',
-          path: `${base}/tsconfig.json`,
-          templateFile: 'templates/extension/tsconfig.json.hbs',
-        });
-      }
+      // Phase 2: shadcn init + components + DarkMatter theme
+      actions.push({ type: 'setup-shadcn' } as PlopTypes.ActionType);
 
       return actions;
     },

@@ -1,0 +1,6 @@
+(() => {
+  if ((window as Record<string, unknown>).__{{ camelCase name }}Injected) return;
+  (window as Record<string, unknown>).__{{ camelCase name }}Injected = true;
+
+  console.log('[{{ displayName }}] Content script loaded');
+})();
