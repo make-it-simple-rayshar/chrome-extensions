@@ -11,3 +11,8 @@ dist/
 
 # envrc
 .envrc
+
+# env files with secrets
+.env.production
+.env.development
+.env.local

@@ -2,6 +2,7 @@
   "extends": "../../packages/tsconfig/extension.json",
   "compilerOptions": {
     "jsx": "react-jsx",
+    "types": ["vite/client", "chrome"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]

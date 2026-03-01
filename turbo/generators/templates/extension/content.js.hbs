@@ -1,9 +1,0 @@
-// {{ displayName }} — Content script
-// Injected into web pages. Has DOM access but limited chrome.* API access.
-
-(() => {
-  if (window.__{{ camelCase name }}Injected) return;
-  window.__{{ camelCase name }}Injected = true;
-
-  console.log('{{ displayName }} content script loaded');
-})();
