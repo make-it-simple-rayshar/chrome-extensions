@@ -1,0 +1,12 @@
+{
+  "name": "@rayshar/full-page-screenshot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capture full-page screenshots with scroll-and-stitch",
+  "scripts": {
+    "clean": "rm -rf dist *.zip",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "package": "node ../../scripts/package-extension.mjs"
+  }
+}

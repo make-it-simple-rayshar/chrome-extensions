@@ -1,0 +1,33 @@
+# {{ displayName }}
+
+{{ description }}
+
+## Architecture
+
+{{#if hasPopup}}
+- `popup.html` / `popup.js` — Extension popup UI
+{{/if}}
+{{#if hasBackground}}
+- `background.js` — Service worker (no DOM access, runs in background)
+{{/if}}
+{{#if hasContentScript}}
+- `content.js` — Content script (injected into web pages, has DOM access)
+{{/if}}
+- `manifest.json` — Chrome extension manifest (Manifest V3)
+- `icons/` — Extension icons (16, 48, 128px)
+
+## Permissions
+
+{{#each permissions}}
+- `{{ this }}`
+{{/each}}
+
+## Scripts
+
+- `pnpm lint` — Lint with Biome
+- `pnpm package` — Create ZIP for Chrome Web Store
+{{#if useTypeScript}}
+- `pnpm build` — Compile TypeScript
+- `pnpm dev` — Watch mode
+- `pnpm type-check` — Type check without emit
+{{/if}}

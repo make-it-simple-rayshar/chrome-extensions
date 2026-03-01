@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.crx
+*.pem
+*.zip
+.turbo/
+
+# claude
+.claude
+
+# envrc
+.envrc

@@ -1,0 +1,20 @@
+{
+  "name": "@rayshar/{{ name }}",
+  "version": "0.0.1",
+  "private": true,
+  "description": "{{ description }}",
+  "scripts": {
+    "clean": "rm -rf dist *.zip",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."{{#if useTypeScript}},
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
+    "dev": "tsc --watch"{{/if}},
+    "package": "node ../../scripts/package-extension.mjs"
+  }{{#if useTypeScript}},
+  "devDependencies": {
+    "@rayshar/tsconfig": "workspace:*",
+    "chrome-types": "^0.1.0",
+    "typescript": "^5.7.0"
+  }{{/if}}
+}
