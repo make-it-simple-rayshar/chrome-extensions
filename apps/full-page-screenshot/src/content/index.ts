@@ -377,11 +377,18 @@
         return;
       }
 
-      // If element covers >85% of viewport, try to find a more specific child
+      // Drill down through oversized elements to find the most specific child under cursor
       let picked = target;
       const vpArea = window.innerWidth * window.innerHeight;
-      if (rect.width * rect.height > vpArea * 0.85) {
-        const children = target.children;
+      const MAX_AREA_RATIO = 0.85;
+      const MAX_DRILL_DEPTH = 5;
+
+      for (let depth = 0; depth < MAX_DRILL_DEPTH; depth++) {
+        const pr = picked.getBoundingClientRect();
+        if (pr.width * pr.height <= vpArea * MAX_AREA_RATIO) break;
+
+        let found = false;
+        const children = picked.children;
         for (let ci = 0; ci < children.length; ci++) {
           const child = children[ci] as HTMLElement;
           const cr = child.getBoundingClientRect();
@@ -392,12 +399,14 @@
             cr.right >= e.clientX &&
             cr.top <= e.clientY &&
             cr.bottom >= e.clientY &&
-            cr.width * cr.height < rect.width * rect.height
+            cr.width * cr.height < pr.width * pr.height
           ) {
             picked = child;
+            found = true;
             break;
           }
         }
+        if (!found) break;
       }
 
       selectedElement = picked;
