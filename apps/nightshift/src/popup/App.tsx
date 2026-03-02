@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { CTABanner } from './cta-banner';
+import { SitesManager } from './sites-manager';
 
+type PopupView = 'main' | 'sites';
 type SiteMode = boolean | 'auto';
 
 interface DarkDetection {
@@ -36,6 +38,7 @@ export function App() {
   const [filters, setFilters] = useState<FilterValues>(DEFAULT_FILTERS);
   const [loading, setLoading] = useState(true);
   const [restricted, setRestricted] = useState(false);
+  const [view, setView] = useState<PopupView>('main');
 
   const tabIdRef = useRef<number | undefined>(undefined);
   const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,6 +164,18 @@ export function App() {
     );
   }
 
+  if (view === 'sites') {
+    return (
+      <div className="w-80 p-3">
+        <Card>
+          <CardContent className="pt-4">
+            <SitesManager onBack={() => setView('main')} />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="w-80 p-3">
       <Card>
@@ -244,6 +259,16 @@ export function App() {
               />
             </div>
           )}
+
+          {/* Manage Sites */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs text-muted-foreground"
+            onClick={() => setView('sites')}
+          >
+            Manage Sites
+          </Button>
 
           {/* Freemium CTA */}
           <CTABanner />
