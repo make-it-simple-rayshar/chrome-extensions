@@ -1,0 +1,16 @@
+/** Message action constants for chrome.runtime message passing */
+export const MSG = {
+  GET_STATE: 'GET_STATE',
+  SET_ENABLED: 'SET_ENABLED',
+  SET_SITE_ENABLED: 'SET_SITE_ENABLED',
+  SET_FILTER_OPTIONS: 'SET_FILTER_OPTIONS',
+  UPDATE_FILTER: 'UPDATE_FILTER',
+  APPLY_DARK: 'APPLY_DARK',
+  REMOVE_DARK: 'REMOVE_DARK',
+  ALREADY_DARK_DETECTED: 'ALREADY_DARK_DETECTED',
+  GET_ALL_SITES: 'GET_ALL_SITES',
+  RESET_ALL_SITES: 'RESET_ALL_SITES',
+  IS_ALREADY_DARK: 'IS_ALREADY_DARK',
+} as const;
+
+export type MessageAction = (typeof MSG)[keyof typeof MSG];

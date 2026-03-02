@@ -1,0 +1,87 @@
+/* NightShift Override: Reddit (www.reddit.com)
+ * Targets CSS custom properties and semantic selectors
+ * Reddit uses --color-* custom properties extensively
+ */
+
+/* Force dark scheme via Reddit's own CSS custom properties */
+:root {
+  --color-neutral-background: #1a1a1b !important;
+  --color-neutral-background-hover: #2a2a2b !important;
+  --color-neutral-background-selected: #3a3a3b !important;
+  --color-neutral-content: #d7dadc !important;
+  --color-neutral-content-weak: #818384 !important;
+  --color-neutral-border-medium: #343536 !important;
+  --color-neutral-border-weak: #474748 !important;
+  --color-tone-1: #d7dadc !important;
+  --color-tone-2: #818384 !important;
+  --color-tone-7: #1a1a1b !important;
+}
+
+/* Base */
+html,
+body {
+  background-color: #030303 !important;
+  color: #d7dadc !important;
+}
+
+/* Header / nav bar */
+header,
+nav {
+  background-color: #1a1a1b !important;
+  border-color: #343536 !important;
+}
+
+/* Post cards */
+[data-testid="post-container"],
+article {
+  background-color: #1a1a1b !important;
+  border-color: #343536 !important;
+  color: #d7dadc !important;
+}
+
+/* Sidebar */
+aside {
+  background-color: #1a1a1b !important;
+  border-color: #343536 !important;
+}
+
+/* Comments */
+[data-testid="comment"] {
+  border-color: #343536 !important;
+}
+
+/* Links */
+a {
+  color: #4fbcff !important;
+}
+
+a:visited {
+  color: #9b8ec8 !important;
+}
+
+/* Input fields */
+input,
+textarea,
+select {
+  background-color: #272729 !important;
+  color: #d7dadc !important;
+  border-color: #343536 !important;
+}
+
+/* Buttons */
+button {
+  border-color: #343536 !important;
+}
+
+/* Modals and overlays */
+[role="dialog"] {
+  background-color: #1a1a1b !important;
+  border-color: #343536 !important;
+}
+
+/* Dropdown menus */
+[role="menu"],
+[role="listbox"] {
+  background-color: #1a1a1b !important;
+  border-color: #343536 !important;
+}
