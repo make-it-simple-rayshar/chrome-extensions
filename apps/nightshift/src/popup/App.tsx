@@ -6,7 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { MSG } from '../shared/messages';
 import { resolveState } from '../shared/state-resolver';
-import type { DarkDetection, FilterOptions, SiteMode } from '../shared/types';
+import type { DarkDetection, DarkMode, FilterOptions, SiteMode } from '../shared/types';
 import { CTABanner } from './cta-banner';
 import { SitesManager } from './sites-manager';
 
@@ -33,6 +33,7 @@ export function App() {
   const [domain, setDomain] = useState<string | null>(null);
   const [darkDetection, setDarkDetection] = useState<DarkDetection | null>(null);
   const [filters, setFilters] = useState<FilterValues>(DEFAULT_FILTERS);
+  const [darkMode, setDarkMode] = useState<DarkMode>('filter');
   const [loading, setLoading] = useState(true);
   const [restricted, setRestricted] = useState(false);
   const [view, setView] = useState<PopupView>('main');
@@ -51,6 +52,7 @@ export function App() {
     if (response?.darkDetection) {
       setDarkDetection(response.darkDetection as DarkDetection);
     }
+    setDarkMode((response?.darkMode as DarkMode) ?? 'filter');
     const opts = (response?.filterOptions ?? {}) as FilterOptions;
     const loaded: FilterValues = {
       brightness: opts.brightness ?? 100,
@@ -172,10 +174,21 @@ export function App() {
     });
   }, []);
 
+  const handleDarkModeChange = useCallback((mode: DarkMode) => {
+    setDarkMode(mode);
+    chrome.runtime.sendMessage({ action: MSG.SET_DARK_MODE, mode }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[NightShift] Mode switch failed:', chrome.runtime.lastError.message);
+        setDarkMode(mode === 'oled' ? 'filter' : 'oled');
+      }
+    });
+  }, []);
+
   const { effectiveEnabled, detectionNotice } = resolveState({
     globalEnabled,
     siteMode,
     darkDetection,
+    darkMode,
   });
 
   if (restricted) {
@@ -249,8 +262,30 @@ export function App() {
             </>
           )}
 
-          {/* Filter sliders — only when dark mode active */}
-          {effectiveEnabled && (
+          {/* Mode selector — Standard / OLED */}
+          {globalEnabled && (
+            <div className="flex gap-2 pt-2 border-t border-border">
+              <Button
+                size="sm"
+                variant={darkMode === 'filter' ? 'default' : 'outline'}
+                className="flex-1"
+                onClick={() => handleDarkModeChange('filter')}
+              >
+                Standard
+              </Button>
+              <Button
+                size="sm"
+                variant={darkMode === 'oled' ? 'default' : 'outline'}
+                className="flex-1"
+                onClick={() => handleDarkModeChange('oled')}
+              >
+                OLED
+              </Button>
+            </div>
+          )}
+
+          {/* Filter sliders — only when dark mode active AND filter mode */}
+          {effectiveEnabled && darkMode === 'filter' && (
             <div className="flex flex-col gap-2.5 pt-2 border-t border-border">
               <SliderRow
                 label="Brightness"

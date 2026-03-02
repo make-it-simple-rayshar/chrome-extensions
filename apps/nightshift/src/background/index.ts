@@ -175,6 +175,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         siteConfig,
         domain,
         darkDetection,
+        darkMode: cachedState.darkMode,
       });
       return true;
     }
@@ -209,6 +210,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
       });
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.SET_DARK_MODE: {
+      cachedState.darkMode = msg.mode;
+      saveState();
+      notifyAllTabs();
       sendResponse({ ok: true });
       return true;
     }

@@ -11,6 +11,7 @@ export const MSG = {
   GET_ALL_SITES: 'GET_ALL_SITES',
   RESET_ALL_SITES: 'RESET_ALL_SITES',
   IS_ALREADY_DARK: 'IS_ALREADY_DARK',
+  SET_DARK_MODE: 'SET_DARK_MODE',
 } as const;
 
 export type MessageAction = (typeof MSG)[keyof typeof MSG];
