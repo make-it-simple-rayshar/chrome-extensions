@@ -1,8 +1,10 @@
 import {
   type DetectionResult,
   applyDarkMode,
+  applyOverride,
   detectNativeDarkMode,
   getState,
+  hasOverride,
   removeDarkMode,
   updateFilter,
 } from './dark-engine';
@@ -20,12 +22,16 @@ import {
 
   const currentDomain = window.location.hostname;
 
-  // FOUC Phase 1: apply filter immediately at document_start
-  // Background returns effectiveEnabled (per-site override > global)
+  // FOUC Phase 1: apply dark mode immediately at document_start
+  // Check for site-specific CSS override first, then fall back to generic filter
   chrome.runtime.sendMessage({ action: 'GET_STATE', domain: currentDomain }, (response) => {
     if (chrome.runtime.lastError) return;
     if (response?.effectiveEnabled) {
-      applyDarkMode(response.filterOptions);
+      if (hasOverride(currentDomain)) {
+        applyOverride(currentDomain);
+      } else {
+        applyDarkMode(response.filterOptions);
+      }
     }
   });
 

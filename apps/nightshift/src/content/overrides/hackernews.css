@@ -1,0 +1,91 @@
+/* NightShift Override: Hacker News (news.ycombinator.com)
+ * Ultra-stable DOM — pure semantic HTML with table-based layout
+ * Selectors: element types and [bgcolor] attributes (stable since 2007)
+ */
+
+/* Base */
+html,
+body {
+  background-color: #1a1a1a !important;
+  color: #d4d4d4 !important;
+}
+
+/* Top bar — HN uses bgcolor attribute */
+[bgcolor="#ff6600"],
+[bgcolor="ff6600"] {
+  background-color: #ff6600 !important;
+}
+
+/* Main content table */
+table {
+  background-color: #1a1a1a !important;
+}
+
+td {
+  color: #d4d4d4 !important;
+}
+
+/* Story titles */
+td .titleline a {
+  color: #8ab4f8 !important;
+}
+
+td .titleline a:visited {
+  color: #9b8ec8 !important;
+}
+
+/* Subtext (points, author, time) */
+td .subtext {
+  color: #888 !important;
+}
+
+td .subtext a {
+  color: #888 !important;
+}
+
+/* Comment text */
+td .commtext {
+  color: #d4d4d4 !important;
+}
+
+/* Comment links */
+td .commtext a {
+  color: #8ab4f8 !important;
+}
+
+/* Rank numbers */
+td .rank {
+  color: #888 !important;
+}
+
+/* Site domain after title */
+td .sitestr {
+  color: #888 !important;
+}
+
+/* Input fields (login, submit) */
+input,
+textarea {
+  background-color: #2d2d2d !important;
+  color: #d4d4d4 !important;
+  border: 1px solid #444 !important;
+}
+
+/* Links general */
+a {
+  color: #8ab4f8 !important;
+}
+
+a:visited {
+  color: #9b8ec8 !important;
+}
+
+/* Toggle triangles and navigation */
+[class="togg"] {
+  color: #888 !important;
+}
+
+/* Footer */
+td [color="#ff6600"] {
+  color: #ff6600 !important;
+}

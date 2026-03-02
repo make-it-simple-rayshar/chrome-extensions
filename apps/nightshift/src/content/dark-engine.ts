@@ -1,4 +1,7 @@
+import { hasOverride as checkOverride, getOverrideCSS } from './overrides';
+
 const STYLE_ID = 'nightshift-filter';
+const OVERRIDE_STYLE_ID = 'nightshift-override';
 const COUNTER_INVERT_SELECTOR = 'img, video, canvas, svg, picture, object, embed';
 const COUNTER_INVERT_ATTR = 'data-nightshift-ci';
 const THROTTLE_MS = 100;
@@ -109,6 +112,11 @@ export function removeDarkMode(): void {
     style.remove();
   }
 
+  const overrideStyle = document.getElementById(OVERRIDE_STYLE_ID);
+  if (overrideStyle) {
+    overrideStyle.remove();
+  }
+
   const marked = document.querySelectorAll(`[${COUNTER_INVERT_ATTR}]`);
   for (const el of marked) {
     el.removeAttribute(COUNTER_INVERT_ATTR);
@@ -198,14 +206,36 @@ export function isAlreadyDark(): boolean {
   return result.isDark && result.confidence === 'high';
 }
 
-const BUNDLED_OVERRIDES: Record<string, string> = {};
-
 export function hasOverride(domain: string): boolean {
-  return domain in BUNDLED_OVERRIDES;
+  return checkOverride(domain);
 }
 
 export function loadOverride(domain: string): string | null {
-  return BUNDLED_OVERRIDES[domain] ?? null;
+  return getOverrideCSS(domain);
+}
+
+export function applyOverride(domain: string): boolean {
+  const css = getOverrideCSS(domain);
+  if (!css) return false;
+
+  state.enabled = true;
+
+  // Remove generic filter if present
+  const filterStyle = document.getElementById(STYLE_ID);
+  if (filterStyle) {
+    filterStyle.remove();
+  }
+
+  // Apply dedicated CSS override
+  let overrideStyle = document.getElementById(OVERRIDE_STYLE_ID) as HTMLStyleElement | null;
+  if (!overrideStyle) {
+    overrideStyle = document.createElement('style');
+    overrideStyle.id = OVERRIDE_STYLE_ID;
+    document.documentElement.appendChild(overrideStyle);
+  }
+  overrideStyle.textContent = css;
+
+  return true;
 }
 
 export function getState(): EngineState {
