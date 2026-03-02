@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { MSG } from '../shared/messages';
 import { resolveState } from '../shared/state-resolver';
 import type {
+  ColorProfile,
   DarkDetection,
   DarkMode,
   FilterOptions,
@@ -46,6 +47,8 @@ export function App() {
   const [schedule, setSchedule] = useState<ScheduleConfig | null>(null);
   const [scheduleOverride, setScheduleOverride] = useState<number | null>(null);
   const [nextEvent, setNextEvent] = useState<{ type: 'on' | 'off'; time: number } | null>(null);
+  const [profiles, setProfiles] = useState<Record<string, ColorProfile>>({});
+  const [activeProfile, setActiveProfile] = useState<string>('default');
 
   const tabIdRef = useRef<number | undefined>(undefined);
   const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,6 +78,12 @@ export function App() {
     }
     if (response?.scheduleOverrideUntil !== undefined) {
       setScheduleOverride((response.scheduleOverrideUntil as number) ?? null);
+    }
+    if (response?.profiles) {
+      setProfiles(response.profiles as Record<string, ColorProfile>);
+    }
+    if (response?.activeProfile) {
+      setActiveProfile(response.activeProfile as string);
     }
   }, []);
 
@@ -197,16 +206,6 @@ export function App() {
     });
   }, []);
 
-  const handleDarkModeChange = useCallback((mode: DarkMode) => {
-    setDarkMode(mode);
-    chrome.runtime.sendMessage({ action: MSG.SET_DARK_MODE, mode }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('[NightShift] Mode switch failed:', chrome.runtime.lastError.message);
-        setDarkMode(mode === 'oled' ? 'filter' : 'oled');
-      }
-    });
-  }, []);
-
   const handleScheduleChange = useCallback((newSchedule: ScheduleConfig | null) => {
     setSchedule(newSchedule);
     chrome.runtime.sendMessage({ action: MSG.SET_SCHEDULE, schedule: newSchedule }, () => {
@@ -223,6 +222,64 @@ export function App() {
       });
     });
   }, []);
+
+  const handleProfileSelect = useCallback(
+    (profileId: string) => {
+      setActiveProfile(profileId);
+      chrome.runtime.sendMessage({ action: MSG.SET_PROFILE, profileId }, (resp) => {
+        if (chrome.runtime.lastError || !resp?.ok) {
+          console.error('[NightShift] Profile switch failed');
+          return;
+        }
+        refreshState();
+      });
+    },
+    [refreshState],
+  );
+
+  const handleCreateProfile = useCallback(
+    (name: string) => {
+      const id = name.toLowerCase().replace(/\s+/g, '-');
+      const profile: ColorProfile = {
+        id,
+        name,
+        darkMode,
+        brightness: filters.brightness,
+        contrast: filters.contrast,
+        sepia: filters.sepia,
+      };
+      chrome.runtime.sendMessage({ action: MSG.CREATE_PROFILE, profile }, (resp) => {
+        if (chrome.runtime.lastError || !resp?.ok) {
+          console.error('[NightShift] Create profile failed');
+          return;
+        }
+        setProfiles((prev) => ({ ...prev, [id]: profile }));
+        setActiveProfile(id);
+      });
+    },
+    [darkMode, filters],
+  );
+
+  const handleDeleteProfile = useCallback(
+    (profileId: string) => {
+      chrome.runtime.sendMessage({ action: MSG.DELETE_PROFILE, profileId }, (resp) => {
+        if (chrome.runtime.lastError || !resp?.ok) {
+          console.error('[NightShift] Delete profile failed');
+          return;
+        }
+        setProfiles((prev) => {
+          const next = { ...prev };
+          delete next[profileId];
+          return next;
+        });
+        if (activeProfile === profileId) {
+          setActiveProfile('default');
+          refreshState();
+        }
+      });
+    },
+    [activeProfile, refreshState],
+  );
 
   const { effectiveEnabled, detectionNotice } = resolveState({
     globalEnabled,
@@ -302,26 +359,15 @@ export function App() {
             </>
           )}
 
-          {/* Mode selector — Standard / OLED */}
+          {/* Profile selector */}
           {globalEnabled && (
-            <div className="flex gap-2 pt-2 border-t border-border">
-              <Button
-                size="sm"
-                variant={darkMode === 'filter' ? 'default' : 'outline'}
-                className="flex-1"
-                onClick={() => handleDarkModeChange('filter')}
-              >
-                Standard
-              </Button>
-              <Button
-                size="sm"
-                variant={darkMode === 'oled' ? 'default' : 'outline'}
-                className="flex-1"
-                onClick={() => handleDarkModeChange('oled')}
-              >
-                OLED
-              </Button>
-            </div>
+            <ProfileSelector
+              profiles={profiles}
+              activeProfile={activeProfile}
+              onSelect={handleProfileSelect}
+              onCreate={handleCreateProfile}
+              onDelete={handleDeleteProfile}
+            />
           )}
 
           {/* Schedule section */}
@@ -378,6 +424,128 @@ export function App() {
           <CTABanner />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function ProfileSelector({
+  profiles,
+  activeProfile,
+  onSelect,
+  onCreate,
+  onDelete,
+}: {
+  profiles: Record<string, ColorProfile>;
+  activeProfile: string;
+  onSelect: (id: string) => void;
+  onCreate: (name: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const profileList = Object.values(profiles);
+
+  const handleCreate = () => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    onCreate(trimmed);
+    setNewName('');
+    setShowCreate(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-2 pt-2 border-t border-border">
+      <span className="text-xs text-muted-foreground">Profile</span>
+      <div className="flex flex-wrap gap-1.5">
+        {profileList.map((p) => (
+          <div key={p.id} className="relative group">
+            <Button
+              size="sm"
+              variant={activeProfile === p.id ? 'default' : 'outline'}
+              className="text-xs h-7 px-2.5"
+              onClick={() => onSelect(p.id)}
+            >
+              {p.name}
+            </Button>
+            {p.id !== 'default' && activeProfile === p.id && (
+              <button
+                type="button"
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => setConfirmDelete(p.id)}
+                aria-label={`Delete ${p.name}`}
+              >
+                x
+              </button>
+            )}
+          </div>
+        ))}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-xs h-7 px-2"
+          onClick={() => setShowCreate(true)}
+        >
+          + Save as...
+        </Button>
+      </div>
+
+      {/* Create profile dialog */}
+      {showCreate && (
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            className="flex-1 h-7 rounded-md border border-input bg-background px-2 text-xs"
+            placeholder="Profile name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          />
+          <Button size="sm" className="h-7 text-xs px-2" onClick={handleCreate}>
+            Save
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs px-2"
+            onClick={() => {
+              setShowCreate(false);
+              setNewName('');
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/10 p-2">
+          <span className="text-xs">Delete "{profiles[confirmDelete]?.name}"?</span>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-6 text-xs px-2"
+              onClick={() => {
+                onDelete(confirmDelete);
+                setConfirmDelete(null);
+              }}
+            >
+              Delete
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-xs px-2"
+              onClick={() => setConfirmDelete(null)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

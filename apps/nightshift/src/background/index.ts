@@ -65,6 +65,22 @@ const DEFAULT_STATE: GlobalState = {
       contrast: 100,
       sepia: 0,
     },
+    'night-reading': {
+      id: 'night-reading',
+      name: 'Night Reading',
+      darkMode: 'filter',
+      brightness: 80,
+      contrast: 90,
+      sepia: 30,
+    },
+    oled: {
+      id: 'oled',
+      name: 'OLED',
+      darkMode: 'oled',
+      brightness: 100,
+      contrast: 100,
+      sepia: 0,
+    },
   },
   scheduleOverrideUntil: null,
 };
@@ -238,6 +254,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         darkMode: cachedState.darkMode,
         schedule: cachedState.schedule,
         scheduleOverrideUntil: cachedState.scheduleOverrideUntil,
+        profiles: cachedState.profiles,
+        activeProfile: cachedState.activeProfile,
       });
       return true;
     }
@@ -365,6 +383,61 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         perSite: cachedState.perSite,
         patterns: cachedState.patterns,
       });
+      return true;
+    }
+
+    case MSG.SET_PROFILE: {
+      const profileId = msg.profileId as string;
+      const profile = cachedState.profiles[profileId];
+      if (!profile) {
+        sendResponse({ ok: false, error: 'Profile not found' });
+        return true;
+      }
+      cachedState.activeProfile = profileId;
+      cachedState.darkMode = profile.darkMode;
+      if (profile.darkMode === 'filter') {
+        cachedState.filterOptions = {
+          brightness: profile.brightness,
+          contrast: profile.contrast,
+          sepia: profile.sepia,
+        };
+      }
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.CREATE_PROFILE: {
+      const newProfile = msg.profile as ColorProfile;
+      cachedState.profiles[newProfile.id] = newProfile;
+      cachedState.activeProfile = newProfile.id;
+      saveState();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.DELETE_PROFILE: {
+      const delId = msg.profileId as string;
+      if (delId === 'default') {
+        sendResponse({ ok: false, error: 'Cannot delete default profile' });
+        return true;
+      }
+      delete cachedState.profiles[delId];
+      if (cachedState.activeProfile === delId) {
+        // Fallback to Standard
+        const fallback = cachedState.profiles.default;
+        cachedState.activeProfile = 'default';
+        cachedState.darkMode = fallback.darkMode;
+        cachedState.filterOptions = {
+          brightness: fallback.brightness,
+          contrast: fallback.contrast,
+          sepia: fallback.sepia,
+        };
+        notifyAllTabs();
+      }
+      saveState();
+      sendResponse({ ok: true });
       return true;
     }
 
