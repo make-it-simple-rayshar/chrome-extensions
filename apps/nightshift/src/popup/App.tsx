@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MSG } from '../shared/messages';
 import { resolveState } from '../shared/state-resolver';
 import type {
@@ -14,7 +15,6 @@ import type {
   ScheduleConfig,
   SiteMode,
 } from '../shared/types';
-import { CTABanner } from './cta-banner';
 import { SitesManager } from './sites-manager';
 
 type PopupView = 'main' | 'sites';
@@ -387,7 +387,7 @@ export function App() {
 
           {/* Filter sliders — only when dark mode active AND filter mode */}
           {effectiveEnabled && darkMode === 'filter' && (
-            <div className="flex flex-col gap-2.5 pt-2 border-t border-border">
+            <div className="flex flex-col gap-2.5 pt-4 mt-2 border-t border-border">
               <SliderRow
                 label="Brightness"
                 value={filters.brightness}
@@ -424,9 +424,6 @@ export function App() {
           >
             Manage Sites
           </Button>
-
-          {/* Freemium CTA */}
-          <CTABanner />
         </CardContent>
       </Card>
     </div>
@@ -461,7 +458,7 @@ function ProfileSelector({
   };
 
   return (
-    <div className="flex flex-col gap-2 pt-2 border-t border-border">
+    <div className="flex flex-col gap-2 pt-4 mt-2 border-t border-border">
       <span className="text-xs text-muted-foreground">Profile</span>
       <div className="flex flex-wrap gap-1.5">
         {profileList.map((p) => (
@@ -475,7 +472,7 @@ function ProfileSelector({
             >
               {p.name}
             </Button>
-            {p.id !== 'default' && activeProfile === p.id && (
+            {!['default', 'night-reading', 'oled'].includes(p.id) && activeProfile === p.id && (
               <button
                 type="button"
                 className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
@@ -620,7 +617,7 @@ function ScheduleSection({
   };
 
   return (
-    <div className="flex flex-col gap-2 pt-2 border-t border-border">
+    <div className="flex flex-col gap-2 pt-4 mt-2 border-t border-border">
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">Auto schedule</span>
         <Switch
@@ -632,26 +629,12 @@ function ScheduleSection({
 
       {current.enabled && (
         <>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={current.mode === 'sun' ? 'default' : 'outline'}
-              className="flex-1 text-xs"
-              onClick={() => handleModeChange('sun')}
-              aria-pressed={current.mode === 'sun'}
-            >
-              Sunset/sunrise
-            </Button>
-            <Button
-              size="sm"
-              variant={current.mode === 'manual' ? 'default' : 'outline'}
-              className="flex-1 text-xs"
-              onClick={() => handleModeChange('manual')}
-              aria-pressed={current.mode === 'manual'}
-            >
-              Custom times
-            </Button>
-          </div>
+          <Tabs value={current.mode} onValueChange={(v) => handleModeChange(v as 'sun' | 'manual')}>
+            <TabsList>
+              <TabsTrigger value="sun">Sunset/sunrise</TabsTrigger>
+              <TabsTrigger value="manual">Custom times</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           {current.mode === 'sun' && (
             <div className="flex flex-col gap-1">

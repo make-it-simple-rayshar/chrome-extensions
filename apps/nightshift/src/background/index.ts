@@ -462,8 +462,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     case MSG.DELETE_PROFILE: {
       const delId = msg.profileId as string;
-      if (delId === 'default') {
-        sendResponse({ ok: false, error: 'Cannot delete default profile' });
+      const builtIn = ['default', 'night-reading', 'oled'];
+      if (builtIn.includes(delId)) {
+        sendResponse({ ok: false, error: 'Cannot delete built-in profile' });
         return true;
       }
       delete cachedState.profiles[delId];

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+    <linearGradient id="moon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f0e6d3"/>
+      <stop offset="100%" stop-color="#e8d5b7"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="128" height="128" rx="24" ry="24" fill="url(#bg)"/>
+  <!-- Crescent moon: large circle minus a smaller offset circle -->
+  <mask id="crescent">
+    <rect width="128" height="128" fill="black"/>
+    <circle cx="58" cy="64" r="38" fill="white"/>
+    <circle cx="78" cy="50" r="30" fill="black"/>
+  </mask>
+  <rect width="128" height="128" fill="url(#moon)" mask="url(#crescent)"/>
+  <!-- Small stars for detail -->
+  <circle cx="95" cy="36" r="2.5" fill="#f0e6d3" opacity="0.9"/>
+  <circle cx="105" cy="55" r="1.8" fill="#f0e6d3" opacity="0.7"/>
+  <circle cx="88" cy="22" r="1.5" fill="#f0e6d3" opacity="0.6"/>
+</svg>

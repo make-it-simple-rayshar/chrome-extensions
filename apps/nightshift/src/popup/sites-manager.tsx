@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MSG } from '../shared/messages';
 import type { PerSitePattern, SiteMode } from '../shared/types';
 
@@ -14,14 +15,11 @@ interface SitesManagerProps {
   onBack: () => void;
 }
 
-type SitesTab = 'sites' | 'patterns' | 'bulk';
-
 export function SitesManager({ onBack }: SitesManagerProps) {
   const [sites, setSites] = useState<SiteEntry[]>([]);
   const [patterns, setPatterns] = useState<PerSitePattern[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<SitesTab>('sites');
   const [bulkText, setBulkText] = useState('');
   const [newPattern, setNewPattern] = useState('');
   const [confirmRemoveAll, setConfirmRemoveAll] = useState(false);
@@ -178,49 +176,14 @@ export function SitesManager({ onBack }: SitesManagerProps) {
         <span className="text-sm font-medium">Manage Sites</span>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1" role="tablist" aria-label="Site management tabs">
-        <Button
-          size="sm"
-          variant={tab === 'sites' ? 'default' : 'outline'}
-          className="flex-1 text-xs"
-          onClick={() => setTab('sites')}
-          role="tab"
-          aria-selected={tab === 'sites'}
-          aria-controls="tabpanel-sites"
-          id="tab-sites"
-        >
-          Sites
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'patterns' ? 'default' : 'outline'}
-          className="flex-1 text-xs"
-          onClick={() => setTab('patterns')}
-          role="tab"
-          aria-selected={tab === 'patterns'}
-          aria-controls="tabpanel-patterns"
-          id="tab-patterns"
-        >
-          Patterns
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'bulk' ? 'default' : 'outline'}
-          className="flex-1 text-xs"
-          onClick={() => setTab('bulk')}
-          role="tab"
-          aria-selected={tab === 'bulk'}
-          aria-controls="tabpanel-bulk"
-          id="tab-bulk"
-        >
-          Bulk
-        </Button>
-      </div>
+      <Tabs defaultValue="sites">
+        <TabsList>
+          <TabsTrigger value="sites">Sites</TabsTrigger>
+          <TabsTrigger value="patterns">Patterns</TabsTrigger>
+          <TabsTrigger value="bulk">Bulk</TabsTrigger>
+        </TabsList>
 
-      {/* Sites tab */}
-      {tab === 'sites' && (
-        <div role="tabpanel" id="tabpanel-sites" aria-labelledby="tab-sites">
+        <TabsContent value="sites">
           <input
             type="text"
             placeholder="Search domains..."
@@ -257,12 +220,9 @@ export function SitesManager({ onBack }: SitesManagerProps) {
               ))}
             </div>
           )}
-        </div>
-      )}
+        </TabsContent>
 
-      {/* Patterns tab */}
-      {tab === 'patterns' && (
-        <div role="tabpanel" id="tabpanel-patterns" aria-labelledby="tab-patterns">
+        <TabsContent value="patterns">
           <div className="flex gap-1">
             <input
               type="text"
@@ -299,12 +259,9 @@ export function SitesManager({ onBack }: SitesManagerProps) {
               </Button>
             </div>
           ))}
-        </div>
-      )}
+        </TabsContent>
 
-      {/* Bulk tab */}
-      {tab === 'bulk' && (
-        <div role="tabpanel" id="tabpanel-bulk" aria-labelledby="tab-bulk">
+        <TabsContent value="bulk">
           <textarea
             placeholder="Paste domains, one per line..."
             aria-label="Bulk add domains"
@@ -316,8 +273,8 @@ export function SitesManager({ onBack }: SitesManagerProps) {
           <Button size="sm" onClick={handleBulkAdd} disabled={!bulkText.trim()}>
             Add All
           </Button>
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
 
       {/* Import error feedback */}
       {importError && (
@@ -327,7 +284,7 @@ export function SitesManager({ onBack }: SitesManagerProps) {
       )}
 
       {/* Footer actions */}
-      <div className="flex gap-1 pt-1 border-t border-border">
+      <div className="flex gap-1 pt-4 mt-2 border-t border-border">
         <Button
           variant="outline"
           size="sm"

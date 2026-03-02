@@ -1,6 +1,6 @@
 {
   "name": "@rayshar/nightshift",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Dark mode for any website — CSS filter inversion with smart detection",
   "scripts": {
@@ -13,6 +13,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
     "package": "node ../../scripts/package-extension.mjs"
   },
   "dependencies": {
@@ -26,6 +29,7 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@rayshar/tsconfig": "workspace:*",
     "@tailwindcss/vite": "^4.0.0",
     "@types/chrome": "^0.0.300",
