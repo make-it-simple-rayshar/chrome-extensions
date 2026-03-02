@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "package": "node ../../scripts/package-extension.mjs"
+    "package": "node ../../scripts/package-extension.mjs",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -25,6 +27,7 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.50.0",
     "@rayshar/tsconfig": "workspace:*",
     "@tailwindcss/vite": "^4.0.0",
     "@types/chrome": "^0.0.300",
