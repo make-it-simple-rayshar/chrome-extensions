@@ -21,6 +21,8 @@ pnpm package           # ZIP all extensions → dist/<name>.zip
 pnpm clean             # Remove build artifacts
 pnpm dev               # Watch mode (TypeScript extensions only)
 pnpm type-check        # Type-check TypeScript extensions
+pnpm test              # Run tests (Vitest) across all extensions
+pnpm quality           # type-check + lint + test in one command
 pnpm gen:extension     # Scaffold a new extension (interactive)
 ```
 
@@ -32,20 +34,24 @@ Run `pnpm gen:extension` and follow the prompts. This creates:
 - `apps/<name>/` with React + Vite + Tailwind + shadcn/ui (DarkMatter theme)
 - Three Vite builds: popup (React), background (IIFE), content (IIFE)
 - shadcn/ui components (Button, Card) + DarkMatter theme auto-installed
-- Proper package.json with build/dev/lint/package scripts
+- Vitest config with `passWithNoTests` enabled
+- Proper package.json with build/dev/lint/test/package scripts
 
 ## Conventions
 
 - **Manifest V3** — all extensions use Chrome Manifest V3
 - **React + Vite + Tailwind + shadcn/ui** — all extensions use this stack
 - **DarkMatter theme** — default shadcn theme from tweakcn
+- **Vitest** for unit testing (`src/**/*.test.ts`)
 - **Biome** for linting and formatting (single quotes, semicolons, 2-space indent)
+- **Lefthook** for git hooks (pre-commit: type-check + lint + test, commit-msg: commitlint)
+- **Commitlint** — conventional commits required (`feat:`, `fix:`, `chore:`, etc.) with scoped packages
 - **Package scope**: `@rayshar/<extension-name>`
 - **Downloads go through `chrome.downloads` API**, not `<a>` tag hacks
 
 ## Per-Extension Scripts
 
-Every extension has: `build`, `dev`, `type-check`, `clean`, `lint`, `lint:fix`, `package`
+Every extension has: `build`, `dev`, `type-check`, `clean`, `lint`, `lint:fix`, `test`, `test:watch`, `test:coverage`, `package`
 
 ## Chrome Extension Patterns
 
