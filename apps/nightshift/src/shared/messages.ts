@@ -18,6 +18,9 @@ export const MSG = {
   REMOVE_PATTERN: 'REMOVE_PATTERN',
   IMPORT_SITES: 'IMPORT_SITES',
   EXPORT_SITES: 'EXPORT_SITES',
+  SET_PROFILE: 'SET_PROFILE',
+  CREATE_PROFILE: 'CREATE_PROFILE',
+  DELETE_PROFILE: 'DELETE_PROFILE',
 } as const;
 
 export type MessageAction = (typeof MSG)[keyof typeof MSG];
