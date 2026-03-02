@@ -14,6 +14,10 @@ export const MSG = {
   SET_DARK_MODE: 'SET_DARK_MODE',
   SET_SCHEDULE: 'SET_SCHEDULE',
   GET_SCHEDULE: 'GET_SCHEDULE',
+  ADD_PATTERN: 'ADD_PATTERN',
+  REMOVE_PATTERN: 'REMOVE_PATTERN',
+  IMPORT_SITES: 'IMPORT_SITES',
+  EXPORT_SITES: 'EXPORT_SITES',
 } as const;
 
 export type MessageAction = (typeof MSG)[keyof typeof MSG];

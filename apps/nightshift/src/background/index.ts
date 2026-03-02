@@ -1,10 +1,12 @@
 import { MSG } from '../shared/messages';
+import { resolveSiteMode } from '../shared/pattern-match';
 import { resolveState } from '../shared/state-resolver';
 import type {
   ColorProfile,
   DarkDetection,
   DarkMode,
   FilterOptions,
+  PerSitePattern,
   ScheduleConfig,
   SiteMode,
 } from '../shared/types';
@@ -38,6 +40,7 @@ interface GlobalState {
   globalEnabled: boolean;
   filterOptions: FilterOptions;
   perSite: Record<string, PerSiteSettings>;
+  patterns: PerSitePattern[];
   schedule: ScheduleConfig | null;
   darkMode: DarkMode;
   activeProfile: string;
@@ -49,6 +52,7 @@ const DEFAULT_STATE: GlobalState = {
   globalEnabled: false,
   filterOptions: {},
   perSite: {},
+  patterns: [],
   schedule: null,
   darkMode: 'filter',
   activeProfile: 'default',
@@ -65,7 +69,7 @@ const DEFAULT_STATE: GlobalState = {
   scheduleOverrideUntil: null,
 };
 
-let cachedState: GlobalState = { ...DEFAULT_STATE, perSite: {} };
+let cachedState: GlobalState = { ...DEFAULT_STATE, perSite: {}, patterns: [] };
 
 // --- Scheduler callbacks (used by alarm handlers) ---
 const schedulerCallbacks: SchedulerCallbacks = {
@@ -91,7 +95,12 @@ chrome.runtime.onStartup.addListener(() => {
   chrome.storage.local.get('nightshift_state', (result) => {
     if (result.nightshift_state) {
       const loaded = result.nightshift_state as GlobalState;
-      cachedState = { ...DEFAULT_STATE, ...loaded, perSite: loaded.perSite ?? {} };
+      cachedState = {
+        ...DEFAULT_STATE,
+        ...loaded,
+        perSite: loaded.perSite ?? {},
+        patterns: loaded.patterns ?? [],
+      };
     }
     createScheduleAlarms(cachedState.schedule);
     applyCorrectStateForCurrentTime(schedulerCallbacks);
@@ -113,7 +122,12 @@ chrome.storage.local.get('nightshift_state', (result) => {
   }
   if (result.nightshift_state) {
     const loaded = result.nightshift_state as GlobalState;
-    cachedState = { ...DEFAULT_STATE, ...loaded, perSite: loaded.perSite ?? {} };
+    cachedState = {
+      ...DEFAULT_STATE,
+      ...loaded,
+      perSite: loaded.perSite ?? {},
+      patterns: loaded.patterns ?? [],
+    };
   }
 });
 
@@ -126,7 +140,7 @@ function saveState(): void {
 }
 
 function getSiteMode(domain: string): SiteMode {
-  return cachedState.perSite[domain]?.enabled ?? 'auto';
+  return resolveSiteMode(domain, cachedState.perSite, cachedState.patterns);
 }
 
 function getEffectiveEnabled(domain: string, tabId?: number): boolean {
@@ -301,15 +315,56 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     case MSG.GET_ALL_SITES: {
-      sendResponse({ perSite: cachedState.perSite });
+      sendResponse({ perSite: cachedState.perSite, patterns: cachedState.patterns });
       return true;
     }
 
     case MSG.RESET_ALL_SITES: {
       cachedState.perSite = {};
+      cachedState.patterns = [];
       saveState();
       notifyAllTabs();
       sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.ADD_PATTERN: {
+      const pattern = msg.pattern as PerSitePattern;
+      cachedState.patterns = [...cachedState.patterns, pattern];
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.REMOVE_PATTERN: {
+      const idx = msg.index as number;
+      cachedState.patterns = cachedState.patterns.filter((_, i) => i !== idx);
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.IMPORT_SITES: {
+      const data = msg.data as {
+        perSite?: Record<string, PerSiteSettings>;
+        patterns?: PerSitePattern[];
+      };
+      if (data.perSite) cachedState.perSite = data.perSite;
+      if (data.patterns) cachedState.patterns = data.patterns;
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.EXPORT_SITES: {
+      sendResponse({
+        version: 1,
+        perSite: cachedState.perSite,
+        patterns: cachedState.patterns,
+      });
       return true;
     }
 
