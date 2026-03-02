@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
+import { CTABanner } from './cta-banner';
 
 type SiteMode = boolean | 'auto';
 
@@ -244,8 +245,8 @@ export function App() {
             </div>
           )}
 
-          {/* CTA reserved space (S6 fills this) */}
-          <div className="min-h-8" />
+          {/* Freemium CTA */}
+          <CTABanner />
         </CardContent>
       </Card>
     </div>
