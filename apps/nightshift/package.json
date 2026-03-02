@@ -10,6 +10,9 @@
     "clean": "rm -rf dist *.zip",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "package": "node ../../scripts/package-extension.mjs"
   },
   "dependencies": {

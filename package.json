@@ -11,11 +11,19 @@
     "package": "turbo run package",
     "clean": "turbo run clean",
     "dev": "turbo run dev",
-    "gen:extension": "turbo gen extension"
+    "test": "turbo run test",
+    "quality": "turbo run type-check lint test",
+    "gen:extension": "turbo gen extension",
+    "prepare": "lefthook install"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
+    "@commitlint/cli": "^20.4.2",
+    "@commitlint/config-conventional": "^20.4.2",
     "@turbo/gen": "^2.4.0",
-    "turbo": "^2.4.0"
+    "@vitest/coverage-v8": "^4.0.18",
+    "lefthook": "^2.1.2",
+    "turbo": "^2.4.0",
+    "vitest": "^4.0.18"
   }
 }
