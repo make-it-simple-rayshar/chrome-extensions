@@ -1,6 +1,23 @@
 import { MSG } from '../shared/messages';
+import { resolveSiteMode } from '../shared/pattern-match';
 import { resolveState } from '../shared/state-resolver';
-import type { DarkDetection, FilterOptions, SiteMode } from '../shared/types';
+import type {
+  ColorProfile,
+  DarkDetection,
+  DarkMode,
+  FilterOptions,
+  PerSitePattern,
+  ScheduleConfig,
+  SiteMode,
+} from '../shared/types';
+import {
+  ALARM_SAFETY_CHECK,
+  type SchedulerCallbacks,
+  applyCorrectStateForCurrentTime,
+  createScheduleAlarms,
+  getNextEventInfo,
+  handleAlarm,
+} from './scheduler';
 
 interface PerSiteSettings {
   enabled: boolean | 'auto';
@@ -23,26 +40,112 @@ interface GlobalState {
   globalEnabled: boolean;
   filterOptions: FilterOptions;
   perSite: Record<string, PerSiteSettings>;
+  patterns: PerSitePattern[];
+  schedule: ScheduleConfig | null;
+  darkMode: DarkMode;
+  activeProfile: string;
+  profiles: Record<string, ColorProfile>;
+  scheduleOverrideUntil: number | null;
 }
 
 const DEFAULT_STATE: GlobalState = {
   globalEnabled: false,
   filterOptions: {},
   perSite: {},
+  patterns: [],
+  schedule: null,
+  darkMode: 'filter',
+  activeProfile: 'default',
+  profiles: {
+    default: {
+      id: 'default',
+      name: 'Standard',
+      darkMode: 'filter',
+      brightness: 100,
+      contrast: 100,
+      sepia: 0,
+    },
+    'night-reading': {
+      id: 'night-reading',
+      name: 'Night Reading',
+      darkMode: 'filter',
+      brightness: 80,
+      contrast: 90,
+      sepia: 30,
+    },
+    oled: {
+      id: 'oled',
+      name: 'OLED',
+      darkMode: 'oled',
+      brightness: 100,
+      contrast: 100,
+      sepia: 0,
+    },
+  },
+  scheduleOverrideUntil: null,
 };
 
-let cachedState: GlobalState = { ...DEFAULT_STATE, perSite: {} };
+let cachedState: GlobalState = { ...DEFAULT_STATE, perSite: {}, patterns: [] };
 
-// Load state from storage on startup
+// --- Scheduler callbacks (used by alarm handlers) ---
+const schedulerCallbacks: SchedulerCallbacks = {
+  getState: () => ({
+    schedule: cachedState.schedule,
+    globalEnabled: cachedState.globalEnabled,
+    scheduleOverrideUntil: cachedState.scheduleOverrideUntil,
+  }),
+  setEnabled: (enabled) => {
+    cachedState.globalEnabled = enabled;
+    notifyAllTabs();
+  },
+  clearOverride: () => {
+    cachedState.scheduleOverrideUntil = null;
+  },
+  saveState,
+};
+
+// === TOP LEVEL — synchronous listeners (MV3 requirement) ===
+chrome.alarms.onAlarm.addListener((alarm) => handleAlarm(alarm, schedulerCallbacks));
+
+function hydrateState(result: Record<string, unknown>): void {
+  if (result.nightshift_state) {
+    const loaded = result.nightshift_state as GlobalState;
+    cachedState = {
+      ...DEFAULT_STATE,
+      ...loaded,
+      perSite: loaded.perSite ?? {},
+      patterns: loaded.patterns ?? [],
+    };
+  }
+}
+
+function initializeScheduler(): void {
+  createScheduleAlarms(cachedState.schedule);
+  applyCorrectStateForCurrentTime(schedulerCallbacks);
+}
+
+chrome.runtime.onStartup.addListener(() => {
+  chrome.storage.local.get('nightshift_state', (result) => {
+    if (chrome.runtime.lastError) {
+      console.error(
+        '[NightShift] Failed to load state on startup:',
+        chrome.runtime.lastError.message,
+      );
+      return;
+    }
+    hydrateState(result);
+    initializeScheduler();
+  });
+});
+
+// Load state from storage on install/update (when onStartup does NOT fire)
 chrome.storage.local.get('nightshift_state', (result) => {
   if (chrome.runtime.lastError) {
     console.error('[NightShift] Failed to load state:', chrome.runtime.lastError.message);
     return;
   }
-  if (result.nightshift_state) {
-    const loaded = result.nightshift_state as GlobalState;
-    cachedState = { ...DEFAULT_STATE, ...loaded, perSite: loaded.perSite ?? {} };
-  }
+  hydrateState(result);
+  initializeScheduler();
 });
 
 function saveState(): void {
@@ -54,7 +157,7 @@ function saveState(): void {
 }
 
 function getSiteMode(domain: string): SiteMode {
-  return cachedState.perSite[domain]?.enabled ?? 'auto';
+  return resolveSiteMode(domain, cachedState.perSite, cachedState.patterns);
 }
 
 function getEffectiveEnabled(domain: string, tabId?: number): boolean {
@@ -63,6 +166,7 @@ function getEffectiveEnabled(domain: string, tabId?: number): boolean {
     globalEnabled: cachedState.globalEnabled,
     siteMode: getSiteMode(domain),
     darkDetection: detection,
+    darkMode: cachedState.darkMode,
   }).effectiveEnabled;
 }
 
@@ -85,6 +189,7 @@ function notifyTab(tabId: number, domain: string): void {
     {
       action: enabled ? MSG.APPLY_DARK : MSG.REMOVE_DARK,
       options: getEffectiveFilterOptions(domain),
+      darkMode: cachedState.darkMode,
     },
     { frameId: 0 },
     () => {
@@ -148,12 +253,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         siteConfig,
         domain,
         darkDetection,
+        darkMode: cachedState.darkMode,
+        schedule: cachedState.schedule,
+        scheduleOverrideUntil: cachedState.scheduleOverrideUntil,
+        profiles: cachedState.profiles,
+        activeProfile: cachedState.activeProfile,
       });
       return true;
     }
 
     case MSG.SET_ENABLED: {
       cachedState.globalEnabled = msg.enabled;
+      // Manual override: if schedule is active, pause until next natural event
+      if (cachedState.schedule?.enabled) {
+        const nextEvent = getNextEventInfo(cachedState.schedule);
+        if (nextEvent) {
+          cachedState.scheduleOverrideUntil = nextEvent.time;
+        }
+      }
       saveState();
       notifyAllTabs();
       sendResponse({ ok: true });
@@ -186,6 +303,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
 
+    case MSG.SET_DARK_MODE: {
+      cachedState.darkMode = msg.mode;
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
     case MSG.SET_FILTER_OPTIONS: {
       cachedState.filterOptions = { ...cachedState.filterOptions, ...msg.options };
       saveState();
@@ -203,21 +328,182 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         globalEnabled: cachedState.globalEnabled,
         siteMode: detDomain ? getSiteMode(detDomain) : 'auto',
         darkDetection: msg.detection ?? null,
+        darkMode: cachedState.darkMode,
       });
       sendResponse({ ok: true, autoSkip: autoSkipped });
       return true;
     }
 
     case MSG.GET_ALL_SITES: {
-      sendResponse({ perSite: cachedState.perSite });
+      sendResponse({ perSite: cachedState.perSite, patterns: cachedState.patterns });
       return true;
     }
 
     case MSG.RESET_ALL_SITES: {
       cachedState.perSite = {};
+      cachedState.patterns = [];
       saveState();
       notifyAllTabs();
       sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.ADD_PATTERN: {
+      const pattern = msg.pattern;
+      if (
+        !pattern ||
+        typeof pattern.pattern !== 'string' ||
+        pattern.pattern.length === 0 ||
+        pattern.pattern.length > 253 ||
+        (typeof pattern.enabled !== 'boolean' && pattern.enabled !== 'auto')
+      ) {
+        sendResponse({ ok: false, error: 'Invalid pattern' });
+        return true;
+      }
+      cachedState.patterns = [...cachedState.patterns, pattern as PerSitePattern];
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.REMOVE_PATTERN: {
+      const idx = msg.index as number;
+      cachedState.patterns = cachedState.patterns.filter((_, i) => i !== idx);
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.IMPORT_SITES: {
+      const data = msg.data;
+      if (!data || typeof data !== 'object') {
+        sendResponse({ ok: false, error: 'Invalid import data' });
+        return true;
+      }
+      if (data.perSite && typeof data.perSite === 'object' && !Array.isArray(data.perSite)) {
+        cachedState.perSite = data.perSite as Record<string, PerSiteSettings>;
+      }
+      if (Array.isArray(data.patterns)) {
+        cachedState.patterns = data.patterns.filter(
+          (p: unknown): p is PerSitePattern =>
+            typeof p === 'object' &&
+            p !== null &&
+            typeof (p as Record<string, unknown>).pattern === 'string' &&
+            (typeof (p as Record<string, unknown>).enabled === 'boolean' ||
+              (p as Record<string, unknown>).enabled === 'auto'),
+        );
+      }
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.EXPORT_SITES: {
+      sendResponse({
+        version: 1,
+        perSite: cachedState.perSite,
+        patterns: cachedState.patterns,
+      });
+      return true;
+    }
+
+    case MSG.SET_PROFILE: {
+      const profileId = msg.profileId as string;
+      const profile = cachedState.profiles[profileId];
+      if (!profile) {
+        sendResponse({ ok: false, error: 'Profile not found' });
+        return true;
+      }
+      cachedState.activeProfile = profileId;
+      cachedState.darkMode = profile.darkMode;
+      if (profile.darkMode === 'filter') {
+        cachedState.filterOptions = {
+          brightness: profile.brightness,
+          contrast: profile.contrast,
+          sepia: profile.sepia,
+        };
+      }
+      saveState();
+      notifyAllTabs();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.CREATE_PROFILE: {
+      const p = msg.profile;
+      if (
+        !p ||
+        typeof p.id !== 'string' ||
+        p.id.length === 0 ||
+        typeof p.name !== 'string' ||
+        (p.darkMode !== 'filter' && p.darkMode !== 'oled') ||
+        typeof p.brightness !== 'number' ||
+        typeof p.contrast !== 'number' ||
+        typeof p.sepia !== 'number'
+      ) {
+        sendResponse({ ok: false, error: 'Invalid profile' });
+        return true;
+      }
+      const reserved = ['default', 'night-reading', 'oled'];
+      if (reserved.includes(p.id)) {
+        sendResponse({ ok: false, error: 'Cannot overwrite built-in profile' });
+        return true;
+      }
+      const newProfile = p as ColorProfile;
+      cachedState.profiles[newProfile.id] = newProfile;
+      cachedState.activeProfile = newProfile.id;
+      saveState();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.DELETE_PROFILE: {
+      const delId = msg.profileId as string;
+      if (delId === 'default') {
+        sendResponse({ ok: false, error: 'Cannot delete default profile' });
+        return true;
+      }
+      delete cachedState.profiles[delId];
+      if (cachedState.activeProfile === delId) {
+        // Fallback to Standard
+        const fallback = cachedState.profiles.default;
+        cachedState.activeProfile = 'default';
+        cachedState.darkMode = fallback.darkMode;
+        cachedState.filterOptions = {
+          brightness: fallback.brightness,
+          contrast: fallback.contrast,
+          sepia: fallback.sepia,
+        };
+        notifyAllTabs();
+      }
+      saveState();
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.SET_SCHEDULE: {
+      const schedule = msg.schedule as ScheduleConfig | null;
+      cachedState.schedule = schedule;
+      cachedState.scheduleOverrideUntil = null;
+      saveState();
+      createScheduleAlarms(schedule);
+      if (schedule?.enabled) {
+        applyCorrectStateForCurrentTime(schedulerCallbacks);
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.GET_SCHEDULE: {
+      const nextEvent = getNextEventInfo(cachedState.schedule);
+      sendResponse({
+        schedule: cachedState.schedule,
+        scheduleOverrideUntil: cachedState.scheduleOverrideUntil,
+        nextEvent,
+      });
       return true;
     }
 

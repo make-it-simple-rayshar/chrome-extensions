@@ -4,11 +4,14 @@ import type { SiteMode } from '../shared/types';
 import {
   type DetectionResult,
   applyDarkMode,
+  applyOledMode,
   applyOverride,
   detectNativeDarkMode,
+  getEngineMode,
   getState,
   hasOverride,
   removeDarkMode,
+  removeOledMode,
   updateFilter,
 } from './dark-engine';
 
@@ -26,12 +29,14 @@ import {
   const currentDomain = window.location.hostname;
 
   // FOUC Phase 1: apply dark mode immediately at document_start
-  // Check for site-specific CSS override first, then fall back to generic filter
+  // Check for site-specific CSS override first, then branch on engine mode
   chrome.runtime.sendMessage({ action: MSG.GET_STATE, domain: currentDomain }, (response) => {
     if (chrome.runtime.lastError) return;
     if (response?.effectiveEnabled) {
       if (hasOverride(currentDomain)) {
         applyOverride(currentDomain);
+      } else if (response.darkMode === 'oled') {
+        applyOledMode();
       } else {
         applyDarkMode(response.filterOptions);
       }
@@ -73,12 +78,15 @@ import {
     const siteConfig = newState.perSite?.[currentDomain];
     const siteMode: SiteMode = siteConfig?.enabled ?? 'auto';
 
+    const newDarkMode = newState.darkMode ?? 'filter';
+
     // Note: content script doesn't have detection state for cross-tab sync,
     // so darkDetection=null here. Detection is handled by onReady → background.
     const { effectiveEnabled: shouldBeEnabled } = resolveState({
       globalEnabled: newState.globalEnabled,
       siteMode,
       darkDetection: null,
+      darkMode: newDarkMode,
     });
 
     // Compute effective filter options (per-site overrides > global)
@@ -90,12 +98,28 @@ import {
     }
 
     const engineState = getState();
-    if (shouldBeEnabled && !engineState.enabled) {
-      applyDarkMode(effectiveOpts);
-    } else if (shouldBeEnabled && engineState.enabled) {
-      updateFilter(effectiveOpts);
-    } else if (!shouldBeEnabled && engineState.enabled) {
-      removeDarkMode();
+    const currentMode = getEngineMode();
+
+    if (shouldBeEnabled) {
+      // Engine mode switch or initial activation
+      if (newDarkMode === 'oled') {
+        if (currentMode !== 'oled' || !engineState.enabled) {
+          applyOledMode();
+        }
+      } else {
+        if (currentMode !== 'filter' || !engineState.enabled) {
+          applyDarkMode(effectiveOpts);
+        } else {
+          updateFilter(effectiveOpts);
+        }
+      }
+    } else if (engineState.enabled) {
+      // Disable: remove whichever engine is active
+      if (currentMode === 'oled') {
+        removeOledMode();
+      } else {
+        removeDarkMode();
+      }
     }
   });
 
@@ -103,13 +127,23 @@ import {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     switch (msg.action) {
       case MSG.APPLY_DARK:
-        applyDarkMode(msg.options);
+        if (msg.darkMode === 'oled') {
+          applyOledMode();
+        } else {
+          applyDarkMode(msg.options);
+        }
         sendResponse({ ok: true });
         return true;
-      case MSG.REMOVE_DARK:
-        removeDarkMode();
+      case MSG.REMOVE_DARK: {
+        const mode = getEngineMode();
+        if (mode === 'oled') {
+          removeOledMode();
+        } else {
+          removeDarkMode();
+        }
         sendResponse({ ok: true });
         return true;
+      }
       case MSG.UPDATE_FILTER:
         updateFilter(msg.options);
         sendResponse({ ok: true });

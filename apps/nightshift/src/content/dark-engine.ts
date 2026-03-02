@@ -1,7 +1,8 @@
-import type { FilterOptions } from '../shared/types';
+import type { DarkMode, FilterOptions } from '../shared/types';
 import { hasOverride as checkOverride, getOverrideCSS } from './overrides';
 
 const STYLE_ID = 'nightshift-filter';
+const OLED_STYLE_ID = 'nightshift-oled';
 const OVERRIDE_STYLE_ID = 'nightshift-override';
 const COUNTER_INVERT_SELECTOR = 'img, video, canvas, svg, picture, object, embed';
 const COUNTER_INVERT_ATTR = 'data-nightshift-ci';
@@ -9,13 +10,16 @@ const THROTTLE_MS = 100;
 
 interface EngineState {
   enabled: boolean;
+  mode: DarkMode;
   options: FilterOptions;
 }
 
 let observer: MutationObserver | null = null;
+let oledObserver: MutationObserver | null = null;
 let throttleTimeout: ReturnType<typeof setTimeout> | null = null;
+let oledThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
 let pendingMutations: MutationRecord[] = [];
-const state: EngineState = { enabled: false, options: {} };
+const state: EngineState = { enabled: false, mode: 'filter', options: {} };
 
 function buildFilterValue(opts: FilterOptions): string {
   const parts = ['invert(1)', 'hue-rotate(180deg)'];
@@ -103,9 +107,128 @@ function stopObserver(): void {
   pendingMutations = [];
 }
 
+// --- OLED Engine ---
+
+const OLED_CSS = [
+  '/* Stage 1: Targeted container backgrounds */',
+  'html, body, main, article, section, div, nav, header, footer, aside,',
+  'form, table, thead, tbody, tr, td, th, ul, ol, li, dl, dd, dt {',
+  '  background-color: #000000 !important;',
+  '  background-image: none !important;',
+  '}',
+  '/* Stage 2: Text readability */',
+  'body, p, span, div, h1, h2, h3, h4, h5, h6, a, li, td, th, label, button {',
+  '  color: #e0e0e0 !important;',
+  '}',
+  'a { color: #6cb4ff !important; }',
+  '/* Stage 3: Media preservation */',
+  'img, video, canvas, iframe, picture, svg:not([fill="none"]) {',
+  '  background-color: transparent !important;',
+  '  background-image: unset !important;',
+  '}',
+  '/* Stage 4: Form controls */',
+  'input, textarea, select {',
+  '  background-color: #111111 !important;',
+  '  color: #e8e8e8 !important;',
+  '  border-color: #444444 !important;',
+  '}',
+  ':root { color-scheme: dark !important; }',
+].join('\n');
+
+function startOledObserver(): void {
+  if (oledObserver) return;
+
+  oledObserver = new MutationObserver(() => {
+    if (oledThrottleTimeout) return;
+    oledThrottleTimeout = setTimeout(() => {
+      oledThrottleTimeout = null;
+      // OLED CSS uses broad selectors so new DOM nodes are auto-styled.
+      // Observer exists to re-inject style if removed by page scripts.
+      requestAnimationFrame(() => {
+        const style = document.getElementById(OLED_STYLE_ID);
+        if (state.enabled && state.mode === 'oled' && !style) {
+          const newStyle = document.createElement('style');
+          newStyle.id = OLED_STYLE_ID;
+          document.documentElement.appendChild(newStyle);
+          newStyle.textContent = OLED_CSS;
+        }
+      });
+    }, THROTTLE_MS);
+  });
+
+  oledObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
+}
+
+function stopOledObserver(): void {
+  if (oledObserver) {
+    oledObserver.disconnect();
+    oledObserver = null;
+  }
+  if (oledThrottleTimeout) {
+    clearTimeout(oledThrottleTimeout);
+    oledThrottleTimeout = null;
+  }
+}
+
+export function applyOledMode(): void {
+  // Remove filter mode first if active
+  if (state.enabled && state.mode === 'filter') {
+    const filterStyle = document.getElementById(STYLE_ID);
+    if (filterStyle) filterStyle.remove();
+    const marked = document.querySelectorAll(`[${COUNTER_INVERT_ATTR}]`);
+    for (const el of marked) el.removeAttribute(COUNTER_INVERT_ATTR);
+    stopObserver();
+  }
+
+  state.enabled = true;
+  state.mode = 'oled';
+
+  let style = document.getElementById(OLED_STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = OLED_STYLE_ID;
+    document.documentElement.appendChild(style);
+  }
+  style.textContent = OLED_CSS;
+
+  startOledObserver();
+}
+
+export function removeOledMode(): void {
+  if (!state.enabled || state.mode !== 'oled') return;
+
+  state.enabled = false;
+  state.mode = 'filter';
+
+  const style = document.getElementById(OLED_STYLE_ID);
+  if (style) style.remove();
+
+  const overrideStyle = document.getElementById(OVERRIDE_STYLE_ID);
+  if (overrideStyle) overrideStyle.remove();
+
+  stopOledObserver();
+}
+
+export function getEngineMode(): DarkMode {
+  return state.mode;
+}
+
+// --- Filter Engine ---
+
 export function applyDarkMode(opts?: FilterOptions): void {
+  // Remove OLED mode first if active
+  if (state.enabled && state.mode === 'oled') {
+    const oledStyle = document.getElementById(OLED_STYLE_ID);
+    if (oledStyle) oledStyle.remove();
+    stopOledObserver();
+  }
+
   state.options = opts ?? {};
   state.enabled = true;
+  state.mode = 'filter';
 
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
   if (!style) {
@@ -123,6 +246,7 @@ export function removeDarkMode(): void {
   if (!state.enabled) return;
 
   state.enabled = false;
+  state.mode = 'filter';
   state.options = {};
 
   const style = document.getElementById(STYLE_ID);

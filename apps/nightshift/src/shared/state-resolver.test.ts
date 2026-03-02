@@ -21,6 +21,7 @@ describe('resolveState', () => {
       effectiveEnabled: false,
       autoSkipped: false,
       detectionNotice: null,
+      darkMode: 'filter',
     });
   });
 
@@ -30,6 +31,7 @@ describe('resolveState', () => {
       effectiveEnabled: false,
       autoSkipped: false,
       detectionNotice: null,
+      darkMode: 'filter',
     });
   });
 
@@ -39,6 +41,7 @@ describe('resolveState', () => {
       effectiveEnabled: false,
       autoSkipped: false,
       detectionNotice: null,
+      darkMode: 'filter',
     });
   });
 
@@ -48,6 +51,7 @@ describe('resolveState', () => {
       effectiveEnabled: true,
       autoSkipped: false,
       detectionNotice: 'Native dark mode detected — NightShift overrides',
+      darkMode: 'filter',
     });
   });
 
@@ -57,6 +61,7 @@ describe('resolveState', () => {
       effectiveEnabled: true,
       autoSkipped: false,
       detectionNotice: null,
+      darkMode: 'filter',
     });
   });
 
@@ -66,6 +71,7 @@ describe('resolveState', () => {
       effectiveEnabled: false,
       autoSkipped: true,
       detectionNotice: 'Native dark mode detected — auto-skipped',
+      darkMode: 'filter',
     });
   });
 
@@ -75,6 +81,7 @@ describe('resolveState', () => {
       effectiveEnabled: true,
       autoSkipped: false,
       detectionNotice: null,
+      darkMode: 'filter',
     });
   });
 
@@ -84,6 +91,68 @@ describe('resolveState', () => {
       effectiveEnabled: true,
       autoSkipped: false,
       detectionNotice: null,
+      darkMode: 'filter',
+    });
+  });
+
+  describe('darkMode pass-through', () => {
+    it('passes through darkMode oled when enabled', () => {
+      const input: ResolverInput = {
+        globalEnabled: true,
+        siteMode: 'auto',
+        darkDetection: null,
+        darkMode: 'oled',
+      };
+      expect(resolveState(input)).toEqual({
+        effectiveEnabled: true,
+        autoSkipped: false,
+        detectionNotice: null,
+        darkMode: 'oled',
+      });
+    });
+
+    it('passes through darkMode filter when enabled', () => {
+      const input: ResolverInput = {
+        globalEnabled: true,
+        siteMode: 'auto',
+        darkDetection: null,
+        darkMode: 'filter',
+      };
+      expect(resolveState(input)).toEqual({
+        effectiveEnabled: true,
+        autoSkipped: false,
+        detectionNotice: null,
+        darkMode: 'filter',
+      });
+    });
+
+    it('defaults darkMode to filter when not provided', () => {
+      const input: ResolverInput = {
+        globalEnabled: true,
+        siteMode: 'auto',
+        darkDetection: null,
+      };
+      expect(resolveState(input).darkMode).toBe('filter');
+    });
+
+    it('returns darkMode filter when OFF (global disabled)', () => {
+      const input: ResolverInput = {
+        globalEnabled: false,
+        siteMode: 'auto',
+        darkDetection: null,
+        darkMode: 'oled',
+      };
+      expect(resolveState(input).darkMode).toBe('filter');
+    });
+
+    it('returns darkMode filter when OFF (site disabled)', () => {
+      const input: ResolverInput = {
+        globalEnabled: true,
+        siteMode: false,
+        darkDetection: null,
+        darkMode: 'oled',
+      };
+      expect(resolveState(input).darkMode).toBe('filter');
     });
   });
 });
