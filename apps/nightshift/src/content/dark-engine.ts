@@ -14,6 +14,7 @@ interface EngineState {
 
 let observer: MutationObserver | null = null;
 let throttleTimeout: ReturnType<typeof setTimeout> | null = null;
+let pendingMutations: MutationRecord[] = [];
 const state: EngineState = { enabled: false, options: {} };
 
 function buildFilterValue(opts: FilterOptions): string {
@@ -70,11 +71,14 @@ function startObserver(): void {
   if (observer) return;
 
   observer = new MutationObserver((mutations) => {
+    pendingMutations.push(...mutations);
     if (throttleTimeout) return;
     throttleTimeout = setTimeout(() => {
       throttleTimeout = null;
+      const batch = pendingMutations;
+      pendingMutations = [];
       requestAnimationFrame(() => {
-        counterInvertAdded(mutations);
+        counterInvertAdded(batch);
       });
     }, THROTTLE_MS);
   });
@@ -96,6 +100,7 @@ function stopObserver(): void {
     clearTimeout(throttleTimeout);
     throttleTimeout = null;
   }
+  pendingMutations = [];
 }
 
 export function applyDarkMode(opts?: FilterOptions): void {

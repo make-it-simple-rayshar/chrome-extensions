@@ -97,20 +97,35 @@ export function App() {
   const handleGlobalToggle = useCallback(() => {
     const newEnabled = !globalEnabled;
     setGlobalEnabled(newEnabled);
-    chrome.runtime.sendMessage({ action: MSG.SET_ENABLED, enabled: newEnabled });
+    chrome.runtime.sendMessage({ action: MSG.SET_ENABLED, enabled: newEnabled }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[NightShift] Toggle failed:', chrome.runtime.lastError.message);
+        setGlobalEnabled(!newEnabled);
+      }
+    });
   }, [globalEnabled]);
 
   const handleSiteToggle = useCallback(() => {
     if (!domain) return;
     const next = cycleSiteMode(siteMode);
     setSiteMode(next);
-    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next });
+    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[NightShift] Site toggle failed:', chrome.runtime.lastError.message);
+        setSiteMode(siteMode);
+      }
+    });
   }, [domain, siteMode]);
 
   const handleApplyAnyway = useCallback(() => {
     if (!domain) return;
     setSiteMode(true);
-    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: true });
+    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: true }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[NightShift] Apply anyway failed:', chrome.runtime.lastError.message);
+        setSiteMode('auto');
+      }
+    });
   }, [domain]);
 
   const sendFilterUpdate = useCallback((key: keyof FilterValues, value: number) => {
@@ -123,15 +138,28 @@ export function App() {
     throttleRef.current = setTimeout(() => {
       throttleRef.current = null;
       if (tabIdRef.current !== undefined) {
-        chrome.tabs.sendMessage(tabIdRef.current, {
-          action: MSG.UPDATE_FILTER,
-          options: filtersRef.current,
-        });
+        chrome.tabs.sendMessage(
+          tabIdRef.current,
+          { action: MSG.UPDATE_FILTER, options: filtersRef.current },
+          { frameId: 0 },
+        );
       }
     }, SLIDER_THROTTLE_MS);
   }, []);
 
   const persistFilters = useCallback(() => {
+    // Flush pending throttle to sync content script with final value
+    if (throttleRef.current) {
+      clearTimeout(throttleRef.current);
+      throttleRef.current = null;
+      if (tabIdRef.current !== undefined) {
+        chrome.tabs.sendMessage(
+          tabIdRef.current,
+          { action: MSG.UPDATE_FILTER, options: filtersRef.current },
+          { frameId: 0 },
+        );
+      }
+    }
     chrome.runtime.sendMessage({
       action: MSG.SET_FILTER_OPTIONS,
       options: filtersRef.current,
@@ -206,9 +234,9 @@ export function App() {
               {/* Smart detection indicator */}
               {showDetection && (
                 <div className="rounded-md border border-yellow-600/30 bg-yellow-950/20 p-2">
-                  <p className="text-xs text-yellow-400">Natywny dark mode wykryty</p>
+                  <p className="text-xs text-yellow-400">Native dark mode detected</p>
                   {darkDetection.confidence === 'high' && (
-                    <p className="text-xs text-muted-foreground mt-0.5">Auto-skip aktywny</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Auto-skip active</p>
                   )}
                   <Button
                     variant="outline"
@@ -286,13 +314,17 @@ function SliderRow({
   onChange: (value: number) => void;
   onCommit: () => void;
 }) {
+  const labelId = `slider-${label.toLowerCase()}`;
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">{label}</span>
+        <span id={labelId} className="text-xs text-muted-foreground">
+          {label}
+        </span>
         <span className="text-xs tabular-nums">{value}%</span>
       </div>
       <Slider
+        aria-labelledby={labelId}
         value={[value]}
         min={min}
         max={max}

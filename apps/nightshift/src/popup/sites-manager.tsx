@@ -86,7 +86,7 @@ export function SitesManager({ onBack }: SitesManagerProps) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={onBack}>
+        <Button variant="ghost" size="sm" onClick={onBack} aria-label="Back to main view">
           &larr;
         </Button>
         <span className="text-sm font-medium">Manage Sites</span>
@@ -95,6 +95,7 @@ export function SitesManager({ onBack }: SitesManagerProps) {
       <input
         type="text"
         placeholder="Search domains..."
+        aria-label="Search domains"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"

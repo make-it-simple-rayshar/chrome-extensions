@@ -76,9 +76,19 @@ import {
       shouldBeEnabled = newState.globalEnabled;
     }
 
+    // Compute effective filter options (per-site overrides > global)
+    const effectiveOpts = { ...newState.filterOptions };
+    if (siteConfig) {
+      if (siteConfig.brightness !== 100) effectiveOpts.brightness = siteConfig.brightness;
+      if (siteConfig.contrast !== 100) effectiveOpts.contrast = siteConfig.contrast;
+      if (siteConfig.sepia !== 0) effectiveOpts.sepia = siteConfig.sepia;
+    }
+
     const engineState = getState();
     if (shouldBeEnabled && !engineState.enabled) {
-      applyDarkMode(newState.filterOptions);
+      applyDarkMode(effectiveOpts);
+    } else if (shouldBeEnabled && engineState.enabled) {
+      updateFilter(effectiveOpts);
     } else if (!shouldBeEnabled && engineState.enabled) {
       removeDarkMode();
     }

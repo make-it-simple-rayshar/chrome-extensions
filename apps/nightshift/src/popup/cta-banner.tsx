@@ -8,6 +8,7 @@ export function CTABanner() {
 
   useEffect(() => {
     chrome.storage.session.get(DISMISS_KEY, (result) => {
+      if (chrome.runtime.lastError) return;
       setDismissed(!!result[DISMISS_KEY]);
     });
   }, []);

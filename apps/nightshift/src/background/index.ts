@@ -34,6 +34,10 @@ let cachedState: GlobalState = { ...DEFAULT_STATE, perSite: {} };
 
 // Load state from storage on startup
 chrome.storage.local.get('nightshift_state', (result) => {
+  if (chrome.runtime.lastError) {
+    console.error('[NightShift] Failed to load state:', chrome.runtime.lastError.message);
+    return;
+  }
   if (result.nightshift_state) {
     const loaded = result.nightshift_state as GlobalState;
     cachedState = { ...DEFAULT_STATE, ...loaded, perSite: loaded.perSite ?? {} };
@@ -41,7 +45,11 @@ chrome.storage.local.get('nightshift_state', (result) => {
 });
 
 function saveState(): void {
-  chrome.storage.local.set({ nightshift_state: cachedState });
+  chrome.storage.local.set({ nightshift_state: cachedState }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('[NightShift] Failed to save state:', chrome.runtime.lastError.message);
+    }
+  });
 }
 
 function getEffectiveEnabled(domain: string): boolean {
@@ -72,6 +80,7 @@ function notifyTab(tabId: number, domain: string): void {
       action: enabled ? MSG.APPLY_DARK : MSG.REMOVE_DARK,
       options: getEffectiveFilterOptions(domain),
     },
+    { frameId: 0 },
     () => {
       if (chrome.runtime.lastError) {
         // expected for chrome:// and edge cases
