@@ -18,6 +18,15 @@ const DEFAULT_PER_SITE: PerSiteSettings = {
   sepia: 0,
 };
 
+interface DarkDetection {
+  isDark: boolean;
+  confidence: 'high' | 'low' | 'none';
+  signals: string[];
+}
+
+// Transient per-tab detection state (not persisted to storage)
+const tabDetections: Record<number, DarkDetection> = {};
+
 interface GlobalState {
   globalEnabled: boolean;
   filterOptions: FilterOptions;
@@ -89,17 +98,38 @@ function getDomainFromUrl(url: string | undefined): string | null {
   }
 }
 
+// Clean up detection state when tabs are closed or navigated
+chrome.tabs.onRemoved.addListener((tabId) => {
+  delete tabDetections[tabId];
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') {
+    delete tabDetections[tabId];
+  }
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.action) {
     case 'GET_STATE': {
       const domain = msg.domain ?? getDomainFromUrl(sender.tab?.url ?? sender.url);
       const effectiveEnabled = domain ? getEffectiveEnabled(domain) : cachedState.globalEnabled;
       const siteConfig = domain ? (cachedState.perSite[domain] ?? null) : null;
+
+      // Look up detection for active tab (popup passes tabId via msg)
+      let darkDetection: DarkDetection | null = null;
+      if (msg.tabId !== undefined) {
+        darkDetection = tabDetections[msg.tabId] ?? null;
+      } else if (sender.tab?.id !== undefined) {
+        darkDetection = tabDetections[sender.tab.id] ?? null;
+      }
+
       sendResponse({
         ...cachedState,
         effectiveEnabled,
         siteConfig,
         domain,
+        darkDetection,
       });
       return true;
     }
@@ -162,9 +192,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
 
-    case 'ALREADY_DARK_DETECTED':
+    case 'ALREADY_DARK_DETECTED': {
+      const tabId = sender.tab?.id;
+      if (tabId !== undefined && msg.detection) {
+        tabDetections[tabId] = msg.detection;
+      }
       sendResponse({ ok: true });
       return true;
+    }
 
     case 'DARK_STATE_CHANGED':
       sendResponse({ ok: true });
