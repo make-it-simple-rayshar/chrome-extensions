@@ -17,10 +17,13 @@ import {
   }
   (window as unknown as Record<string, unknown>).__nightshiftInjected = true;
 
-  // FOUC Phase 1: apply filter immediately at document_start if cached state says ON
-  chrome.runtime.sendMessage({ action: 'GET_STATE' }, (response) => {
+  const currentDomain = window.location.hostname;
+
+  // FOUC Phase 1: apply filter immediately at document_start
+  // Background returns effectiveEnabled (per-site override > global)
+  chrome.runtime.sendMessage({ action: 'GET_STATE', domain: currentDomain }, (response) => {
     if (chrome.runtime.lastError) return;
-    if (response?.globalEnabled) {
+    if (response?.effectiveEnabled) {
       applyDarkMode(response.filterOptions);
     }
   });
@@ -41,6 +44,30 @@ import {
   } else {
     onReady();
   }
+
+  // Cross-tab sync: listen for storage changes directly (0 hop, < 500ms)
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.nightshift_state) return;
+
+    const newState = changes.nightshift_state.newValue;
+    if (!newState) return;
+
+    const siteConfig = newState.perSite?.[currentDomain];
+    let shouldBeEnabled: boolean;
+
+    if (siteConfig && siteConfig.enabled !== 'auto') {
+      shouldBeEnabled = siteConfig.enabled;
+    } else {
+      shouldBeEnabled = newState.globalEnabled;
+    }
+
+    const engineState = getState();
+    if (shouldBeEnabled && !engineState.enabled) {
+      applyDarkMode(newState.filterOptions);
+    } else if (!shouldBeEnabled && engineState.enabled) {
+      removeDarkMode();
+    }
+  });
 
   // Message handler
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
