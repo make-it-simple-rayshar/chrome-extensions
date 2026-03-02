@@ -201,6 +201,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
 
+    case 'GET_ALL_SITES': {
+      sendResponse({ perSite: cachedState.perSite });
+      return true;
+    }
+
+    case 'RESET_ALL_SITES': {
+      cachedState.perSite = {};
+      saveState();
+
+      // Notify all tabs to re-evaluate
+      chrome.tabs.query({}, (tabs) => {
+        for (const tab of tabs) {
+          if (tab.id === undefined) continue;
+          const domain = getDomainFromUrl(tab.url);
+          if (!domain) continue;
+          notifyTab(tab.id, domain);
+        }
+      });
+      sendResponse({ ok: true });
+      return true;
+    }
+
     case 'DARK_STATE_CHANGED':
       sendResponse({ ok: true });
       return true;
