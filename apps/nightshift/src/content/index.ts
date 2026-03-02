@@ -1,7 +1,8 @@
 import {
+  type DetectionResult,
   applyDarkMode,
+  detectNativeDarkMode,
   getState,
-  isAlreadyDark,
   removeDarkMode,
   updateFilter,
 } from './dark-engine';
@@ -28,15 +29,22 @@ import {
     }
   });
 
-  // FOUC Phase 2: check if page is already dark after DOM loads
+  // FOUC Phase 2: detect native dark mode after DOM loads
   const onReady = () => {
-    if (getState().enabled && isAlreadyDark()) {
+    const detection: DetectionResult = detectNativeDarkMode();
+
+    if (!detection.isDark) return;
+
+    if (detection.confidence === 'high' && getState().enabled) {
+      // High confidence: auto-skip — remove filter immediately
       removeDarkMode();
-      chrome.runtime.sendMessage({
-        action: 'ALREADY_DARK_DETECTED',
-        luminance: 0,
-      });
     }
+
+    // Report detection to background (both high and low)
+    chrome.runtime.sendMessage({
+      action: 'ALREADY_DARK_DETECTED',
+      detection,
+    });
   };
 
   if (document.readyState === 'loading') {
@@ -88,7 +96,7 @@ import {
         sendResponse(getState());
         return true;
       case 'IS_ALREADY_DARK':
-        sendResponse({ dark: isAlreadyDark() });
+        sendResponse({ detection: detectNativeDarkMode() });
         return true;
       default:
         return false;

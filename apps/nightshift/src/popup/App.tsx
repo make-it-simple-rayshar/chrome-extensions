@@ -5,10 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 type SiteMode = boolean | 'auto';
 
+interface DarkDetection {
+  isDark: boolean;
+  confidence: 'high' | 'low' | 'none';
+  signals: string[];
+}
+
 export function App() {
   const [globalEnabled, setGlobalEnabled] = useState(false);
   const [siteMode, setSiteMode] = useState<SiteMode>('auto');
   const [domain, setDomain] = useState<string | null>(null);
+  const [darkDetection, setDarkDetection] = useState<DarkDetection | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,19 +31,25 @@ export function App() {
       }
       setDomain(tabDomain);
 
-      chrome.runtime.sendMessage({ action: 'GET_STATE', domain: tabDomain }, (response) => {
-        if (chrome.runtime.lastError) {
+      chrome.runtime.sendMessage(
+        { action: 'GET_STATE', domain: tabDomain, tabId: tab?.id },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            setLoading(false);
+            return;
+          }
+          setGlobalEnabled(response?.globalEnabled ?? false);
+          if (response?.siteConfig) {
+            setSiteMode(response.siteConfig.enabled ?? 'auto');
+          } else {
+            setSiteMode('auto');
+          }
+          if (response?.darkDetection) {
+            setDarkDetection(response.darkDetection);
+          }
           setLoading(false);
-          return;
-        }
-        setGlobalEnabled(response?.globalEnabled ?? false);
-        if (response?.siteConfig) {
-          setSiteMode(response.siteConfig.enabled ?? 'auto');
-        } else {
-          setSiteMode('auto');
-        }
-        setLoading(false);
-      });
+        },
+      );
     });
   }, []);
 
@@ -61,9 +74,18 @@ export function App() {
     chrome.runtime.sendMessage({ action: 'SET_SITE_ENABLED', domain, enabled: next });
   }, [domain, siteMode]);
 
+  const handleApplyAnyway = useCallback(() => {
+    if (!domain) return;
+    setSiteMode(true);
+    chrome.runtime.sendMessage({ action: 'SET_SITE_ENABLED', domain, enabled: true });
+  }, [domain]);
+
   const effectiveEnabled = siteMode !== 'auto' ? siteMode : globalEnabled;
 
   const siteLabel = siteMode === 'auto' ? 'Auto (global)' : siteMode ? 'Always ON' : 'Always OFF';
+
+  // Show detection indicator when dark mode detected AND user hasn't overridden
+  const showDetection = darkDetection?.isDark && siteMode === 'auto';
 
   return (
     <div className="w-64 p-3">
@@ -95,6 +117,23 @@ export function App() {
               >
                 {siteLabel}
               </Button>
+
+              {showDetection && (
+                <div className="rounded-md border border-yellow-600/30 bg-yellow-950/20 p-2">
+                  <p className="text-xs text-yellow-400">Natywny dark mode wykryty</p>
+                  {darkDetection.confidence === 'high' && (
+                    <p className="text-xs text-muted-foreground mt-0.5">Auto-skip aktywny</p>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-1.5"
+                    onClick={handleApplyAnyway}
+                  >
+                    Apply anyway
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </CardContent>
