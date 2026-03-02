@@ -1,3 +1,4 @@
+import { MSG } from '../shared/messages';
 import {
   type DetectionResult,
   applyDarkMode,
@@ -24,7 +25,7 @@ import {
 
   // FOUC Phase 1: apply dark mode immediately at document_start
   // Check for site-specific CSS override first, then fall back to generic filter
-  chrome.runtime.sendMessage({ action: 'GET_STATE', domain: currentDomain }, (response) => {
+  chrome.runtime.sendMessage({ action: MSG.GET_STATE, domain: currentDomain }, (response) => {
     if (chrome.runtime.lastError) return;
     if (response?.effectiveEnabled) {
       if (hasOverride(currentDomain)) {
@@ -48,7 +49,7 @@ import {
 
     // Report detection to background (both high and low)
     chrome.runtime.sendMessage({
-      action: 'ALREADY_DARK_DETECTED',
+      action: MSG.ALREADY_DARK_DETECTED,
       detection,
     });
   };
@@ -86,22 +87,22 @@ import {
   // Message handler
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     switch (msg.action) {
-      case 'APPLY_DARK':
+      case MSG.APPLY_DARK:
         applyDarkMode(msg.options);
         sendResponse({ ok: true });
         return true;
-      case 'REMOVE_DARK':
+      case MSG.REMOVE_DARK:
         removeDarkMode();
         sendResponse({ ok: true });
         return true;
-      case 'UPDATE_FILTER':
+      case MSG.UPDATE_FILTER:
         updateFilter(msg.options);
         sendResponse({ ok: true });
         return true;
-      case 'GET_STATE':
+      case MSG.GET_STATE:
         sendResponse(getState());
         return true;
-      case 'IS_ALREADY_DARK':
+      case MSG.IS_ALREADY_DARK:
         sendResponse({ detection: detectNativeDarkMode() });
         return true;
       default:

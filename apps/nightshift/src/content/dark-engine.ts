@@ -1,3 +1,4 @@
+import type { FilterOptions } from '../shared/types';
 import { hasOverride as checkOverride, getOverrideCSS } from './overrides';
 
 const STYLE_ID = 'nightshift-filter';
@@ -5,12 +6,6 @@ const OVERRIDE_STYLE_ID = 'nightshift-override';
 const COUNTER_INVERT_SELECTOR = 'img, video, canvas, svg, picture, object, embed';
 const COUNTER_INVERT_ATTR = 'data-nightshift-ci';
 const THROTTLE_MS = 100;
-
-interface FilterOptions {
-  brightness?: number;
-  contrast?: number;
-  sepia?: number;
-}
 
 interface EngineState {
   enabled: boolean;
@@ -44,24 +39,42 @@ function buildStyleContent(opts: FilterOptions): string {
   ].join('\n');
 }
 
-function counterInvertNew(): void {
-  const elements = document.querySelectorAll(COUNTER_INVERT_SELECTOR);
-  for (const el of elements) {
-    if (!el.hasAttribute(COUNTER_INVERT_ATTR)) {
-      el.setAttribute(COUNTER_INVERT_ATTR, '1');
+function markElement(el: Element): void {
+  if (!el.hasAttribute(COUNTER_INVERT_ATTR)) {
+    el.setAttribute(COUNTER_INVERT_ATTR, '1');
+  }
+}
+
+function counterInvertAdded(mutations: MutationRecord[]): void {
+  for (const mutation of mutations) {
+    for (const node of mutation.addedNodes) {
+      if (node.nodeType !== Node.ELEMENT_NODE) continue;
+      const el = node as Element;
+      if (el.matches(COUNTER_INVERT_SELECTOR)) {
+        markElement(el);
+      }
+      for (const child of el.querySelectorAll(COUNTER_INVERT_SELECTOR)) {
+        markElement(child);
+      }
     }
+  }
+}
+
+function counterInvertAll(): void {
+  for (const el of document.querySelectorAll(COUNTER_INVERT_SELECTOR)) {
+    markElement(el);
   }
 }
 
 function startObserver(): void {
   if (observer) return;
 
-  observer = new MutationObserver(() => {
+  observer = new MutationObserver((mutations) => {
     if (throttleTimeout) return;
     throttleTimeout = setTimeout(() => {
       throttleTimeout = null;
       requestAnimationFrame(() => {
-        counterInvertNew();
+        counterInvertAdded(mutations);
       });
     }, THROTTLE_MS);
   });
@@ -86,10 +99,8 @@ function stopObserver(): void {
 }
 
 export function applyDarkMode(opts?: FilterOptions): void {
-  if (state.enabled) return;
-
-  state.enabled = true;
   state.options = opts ?? {};
+  state.enabled = true;
 
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
   if (!style) {
@@ -99,11 +110,13 @@ export function applyDarkMode(opts?: FilterOptions): void {
   }
   style.textContent = buildStyleContent(state.options);
 
-  counterInvertNew();
+  counterInvertAll();
   startObserver();
 }
 
 export function removeDarkMode(): void {
+  if (!state.enabled) return;
+
   state.enabled = false;
   state.options = {};
 
@@ -201,17 +214,8 @@ export function detectNativeDarkMode(): DetectionResult {
   return { isDark: false, confidence: 'none', signals: [] };
 }
 
-export function isAlreadyDark(): boolean {
-  const result = detectNativeDarkMode();
-  return result.isDark && result.confidence === 'high';
-}
-
 export function hasOverride(domain: string): boolean {
   return checkOverride(domain);
-}
-
-export function loadOverride(domain: string): string | null {
-  return getOverrideCSS(domain);
 }
 
 export function applyOverride(domain: string): boolean {
