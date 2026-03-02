@@ -355,7 +355,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         typeof pattern.pattern !== 'string' ||
         pattern.pattern.length === 0 ||
         pattern.pattern.length > 253 ||
-        typeof pattern.enabled !== 'boolean'
+        (typeof pattern.enabled !== 'boolean' && pattern.enabled !== 'auto')
       ) {
         sendResponse({ ok: false, error: 'Invalid pattern' });
         return true;
@@ -386,7 +386,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         cachedState.perSite = data.perSite as Record<string, PerSiteSettings>;
       }
       if (Array.isArray(data.patterns)) {
-        cachedState.patterns = data.patterns as PerSitePattern[];
+        cachedState.patterns = data.patterns.filter(
+          (p: unknown): p is PerSitePattern =>
+            typeof p === 'object' &&
+            p !== null &&
+            typeof (p as Record<string, unknown>).pattern === 'string' &&
+            (typeof (p as Record<string, unknown>).enabled === 'boolean' ||
+              (p as Record<string, unknown>).enabled === 'auto'),
+        );
       }
       saveState();
       notifyAllTabs();
@@ -426,7 +433,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     case MSG.CREATE_PROFILE: {
-      const newProfile = msg.profile as ColorProfile;
+      const p = msg.profile;
+      if (
+        !p ||
+        typeof p.id !== 'string' ||
+        p.id.length === 0 ||
+        typeof p.name !== 'string' ||
+        (p.darkMode !== 'filter' && p.darkMode !== 'oled') ||
+        typeof p.brightness !== 'number' ||
+        typeof p.contrast !== 'number' ||
+        typeof p.sepia !== 'number'
+      ) {
+        sendResponse({ ok: false, error: 'Invalid profile' });
+        return true;
+      }
+      const reserved = ['default', 'night-reading', 'oled'];
+      if (reserved.includes(p.id)) {
+        sendResponse({ ok: false, error: 'Cannot overwrite built-in profile' });
+        return true;
+      }
+      const newProfile = p as ColorProfile;
       cachedState.profiles[newProfile.id] = newProfile;
       cachedState.activeProfile = newProfile.id;
       saveState();

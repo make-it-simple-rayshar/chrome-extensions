@@ -24,6 +24,7 @@ export function SitesManager({ onBack }: SitesManagerProps) {
   const [tab, setTab] = useState<SitesTab>('sites');
   const [bulkText, setBulkText] = useState('');
   const [newPattern, setNewPattern] = useState('');
+  const [confirmRemoveAll, setConfirmRemoveAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadSites = useCallback(() => {
@@ -354,10 +355,47 @@ export function SitesManager({ onBack }: SitesManagerProps) {
         />
       </div>
 
-      {!loading && (sites.length > 0 || patterns.length > 0) && (
-        <Button variant="outline" size="sm" className="w-full text-xs" onClick={handleRemoveAll}>
+      {!loading && (sites.length > 0 || patterns.length > 0) && !confirmRemoveAll && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full text-xs"
+          onClick={() => setConfirmRemoveAll(true)}
+        >
           Remove All
         </Button>
+      )}
+
+      {confirmRemoveAll && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Confirm removal of all sites and patterns"
+          className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/10 p-2"
+        >
+          <span className="text-xs">Remove all sites &amp; patterns?</span>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-6 px-2"
+              onClick={() => setConfirmRemoveAll(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="text-xs h-6 px-2"
+              onClick={() => {
+                handleRemoveAll();
+                setConfirmRemoveAll(false);
+              }}
+            >
+              Confirm
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

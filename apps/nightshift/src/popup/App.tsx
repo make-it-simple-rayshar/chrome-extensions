@@ -638,6 +638,7 @@ function ScheduleSection({
               variant={current.mode === 'sun' ? 'default' : 'outline'}
               className="flex-1 text-xs"
               onClick={() => handleModeChange('sun')}
+              aria-pressed={current.mode === 'sun'}
             >
               Sunset/sunrise
             </Button>
@@ -646,6 +647,7 @@ function ScheduleSection({
               variant={current.mode === 'manual' ? 'default' : 'outline'}
               className="flex-1 text-xs"
               onClick={() => handleModeChange('manual')}
+              aria-pressed={current.mode === 'manual'}
             >
               Custom times
             </Button>

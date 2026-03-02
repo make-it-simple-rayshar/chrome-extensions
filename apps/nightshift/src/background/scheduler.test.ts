@@ -302,6 +302,20 @@ describe('scheduler', () => {
       expect(eventDate.getHours()).toBeLessThanOrEqual(22);
     });
 
+    it('returns fallback event when lat/lng missing', () => {
+      const config: ScheduleConfig = {
+        enabled: true,
+        mode: 'sun',
+        manualStart: '20:00',
+        manualEnd: '07:00',
+        // No latitude/longitude
+      };
+      const now = new Date('2026-06-15T12:00:00Z');
+      const result = computeNextEvent(config, now);
+      expect(result.type).toBe('on');
+      expect(result.time).toBe(now.getTime() + 3600000);
+    });
+
     it('computes sunrise event when sun is down', () => {
       const config: ScheduleConfig = {
         enabled: true,
