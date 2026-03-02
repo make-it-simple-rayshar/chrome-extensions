@@ -1,0 +1,15 @@
+{
+  "extends": "../../packages/tsconfig/extension.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["vite/client", "chrome"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
