@@ -13,10 +13,3 @@ export interface DarkDetection {
   confidence: 'high' | 'low' | 'none';
   signals: string[];
 }
-
-/** Cycle site mode: auto → true → false → auto */
-export function cycleSiteMode(current: SiteMode): SiteMode {
-  if (current === 'auto') return true;
-  if (current === true) return false;
-  return 'auto';
-}

@@ -1,4 +1,6 @@
 import { MSG } from '../shared/messages';
+import { resolveState } from '../shared/state-resolver';
+import type { SiteMode } from '../shared/types';
 import {
   type DetectionResult,
   applyDarkMode,
@@ -42,16 +44,17 @@ import {
 
     if (!detection.isDark) return;
 
-    if (detection.confidence === 'high' && getState().enabled) {
-      // High confidence: auto-skip — remove filter immediately
-      removeDarkMode();
-    }
-
-    // Report detection to background (both high and low)
-    chrome.runtime.sendMessage({
-      action: MSG.ALREADY_DARK_DETECTED,
-      detection,
-    });
+    // Report detection to background and let it decide on auto-skip.
+    // Background knows siteMode — only auto-skip when site is 'auto' (not forced ON).
+    chrome.runtime.sendMessage(
+      { action: MSG.ALREADY_DARK_DETECTED, detection, domain: currentDomain },
+      (response) => {
+        if (chrome.runtime.lastError) return;
+        if (response?.autoSkip && getState().enabled) {
+          removeDarkMode();
+        }
+      },
+    );
   };
 
   if (document.readyState === 'loading') {
@@ -68,13 +71,15 @@ import {
     if (!newState) return;
 
     const siteConfig = newState.perSite?.[currentDomain];
-    let shouldBeEnabled: boolean;
+    const siteMode: SiteMode = siteConfig?.enabled ?? 'auto';
 
-    if (siteConfig && siteConfig.enabled !== 'auto') {
-      shouldBeEnabled = siteConfig.enabled;
-    } else {
-      shouldBeEnabled = newState.globalEnabled;
-    }
+    // Note: content script doesn't have detection state for cross-tab sync,
+    // so darkDetection=null here. Detection is handled by onReady → background.
+    const { effectiveEnabled: shouldBeEnabled } = resolveState({
+      globalEnabled: newState.globalEnabled,
+      siteMode,
+      darkDetection: null,
+    });
 
     // Compute effective filter options (per-site overrides > global)
     const effectiveOpts = { ...newState.filterOptions };

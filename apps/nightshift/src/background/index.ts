@@ -1,5 +1,6 @@
 import { MSG } from '../shared/messages';
-import type { DarkDetection, FilterOptions } from '../shared/types';
+import { resolveState } from '../shared/state-resolver';
+import type { DarkDetection, FilterOptions, SiteMode } from '../shared/types';
 
 interface PerSiteSettings {
   enabled: boolean | 'auto';
@@ -52,12 +53,17 @@ function saveState(): void {
   });
 }
 
-function getEffectiveEnabled(domain: string): boolean {
-  const siteConfig = cachedState.perSite[domain];
-  if (siteConfig && siteConfig.enabled !== 'auto') {
-    return siteConfig.enabled;
-  }
-  return cachedState.globalEnabled;
+function getSiteMode(domain: string): SiteMode {
+  return cachedState.perSite[domain]?.enabled ?? 'auto';
+}
+
+function getEffectiveEnabled(domain: string, tabId?: number): boolean {
+  const detection = tabId !== undefined ? (tabDetections[tabId] ?? null) : null;
+  return resolveState({
+    globalEnabled: cachedState.globalEnabled,
+    siteMode: getSiteMode(domain),
+    darkDetection: detection,
+  }).effectiveEnabled;
 }
 
 function getEffectiveFilterOptions(domain: string): FilterOptions {
@@ -192,7 +198,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (tabId !== undefined && msg.detection) {
         tabDetections[tabId] = msg.detection;
       }
-      sendResponse({ ok: true });
+      const detDomain = msg.domain ?? getDomainFromUrl(sender.tab?.url);
+      const { autoSkipped } = resolveState({
+        globalEnabled: cachedState.globalEnabled,
+        siteMode: detDomain ? getSiteMode(detDomain) : 'auto',
+        darkDetection: msg.detection ?? null,
+      });
+      sendResponse({ ok: true, autoSkip: autoSkipped });
       return true;
     }
 

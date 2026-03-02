@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { MSG } from '../shared/messages';
 import type { SiteMode } from '../shared/types';
-import { cycleSiteMode } from '../shared/types';
 
 interface SiteEntry {
   domain: string;
@@ -47,41 +47,18 @@ export function SitesManager({ onBack }: SitesManagerProps) {
     return sites.filter((s) => s.domain.toLowerCase().includes(q));
   }, [sites, search]);
 
-  const handleToggle = useCallback(
-    (domain: string) => {
-      const site = sites.find((s) => s.domain === domain);
-      if (!site) return;
+  const handleToggle = useCallback((domain: string, checked: boolean) => {
+    const next: SiteMode = checked;
+    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next });
+    setSites((prev) => prev.map((s) => (s.domain === domain ? { ...s, enabled: next } : s)));
+  }, []);
 
-      const next = cycleSiteMode(site.enabled);
-
-      chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next });
-
-      setSites((prev) =>
-        prev
-          .map((s) => (s.domain === domain ? { ...s, enabled: next } : s))
-          .filter((s) => s.enabled !== 'auto'),
-      );
-    },
-    [sites],
-  );
-
-  const handleResetAll = useCallback(() => {
+  const handleRemoveAll = useCallback(() => {
     chrome.runtime.sendMessage({ action: MSG.RESET_ALL_SITES }, () => {
       if (chrome.runtime.lastError) return;
       setSites([]);
     });
   }, []);
-
-  const modeLabel = (enabled: SiteMode): string => {
-    if (enabled === 'auto') return 'Auto';
-    return enabled ? 'ON' : 'OFF';
-  };
-
-  const modeVariant = (enabled: SiteMode): 'secondary' | 'outline' | 'destructive' => {
-    if (enabled === true) return 'secondary';
-    if (enabled === false) return 'destructive';
-    return 'outline';
-  };
 
   return (
     <div className="flex flex-col gap-2">
@@ -117,22 +94,19 @@ export function SitesManager({ onBack }: SitesManagerProps) {
               <span className="text-xs truncate" title={site.domain}>
                 {site.domain}
               </span>
-              <Button
-                variant={modeVariant(site.enabled)}
-                size="sm"
-                className="shrink-0 text-xs h-6 px-2"
-                onClick={() => handleToggle(site.domain)}
-              >
-                {modeLabel(site.enabled)}
-              </Button>
+              <Switch
+                checked={site.enabled === true}
+                onCheckedChange={(checked) => handleToggle(site.domain, checked)}
+                aria-label={`Dark mode for ${site.domain}`}
+              />
             </div>
           ))}
         </div>
       )}
 
       {!loading && sites.length > 0 && (
-        <Button variant="outline" size="sm" className="w-full mt-1" onClick={handleResetAll}>
-          Reset All
+        <Button variant="outline" size="sm" className="w-full mt-1" onClick={handleRemoveAll}>
+          Remove All
         </Button>
       )}
     </div>

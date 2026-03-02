@@ -3,9 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { MSG } from '../shared/messages';
+import { resolveState } from '../shared/state-resolver';
 import type { DarkDetection, FilterOptions, SiteMode } from '../shared/types';
-import { cycleSiteMode } from '../shared/types';
 import { CTABanner } from './cta-banner';
 import { SitesManager } from './sites-manager';
 
@@ -39,6 +40,36 @@ export function App() {
   const tabIdRef = useRef<number | undefined>(undefined);
   const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filtersRef = useRef<FilterValues>(DEFAULT_FILTERS);
+  const siteModeRef = useRef<SiteMode>('auto');
+
+  const applyStateResponse = useCallback((response: Record<string, unknown>) => {
+    setGlobalEnabled((response?.globalEnabled as boolean) ?? false);
+    const siteConfig = response?.siteConfig as { enabled?: SiteMode } | undefined;
+    const mode: SiteMode = siteConfig?.enabled ?? 'auto';
+    setSiteMode(mode);
+    siteModeRef.current = mode;
+    if (response?.darkDetection) {
+      setDarkDetection(response.darkDetection as DarkDetection);
+    }
+    const opts = (response?.filterOptions ?? {}) as FilterOptions;
+    const loaded: FilterValues = {
+      brightness: opts.brightness ?? 100,
+      contrast: opts.contrast ?? 100,
+      sepia: opts.sepia ?? 0,
+    };
+    setFilters(loaded);
+    filtersRef.current = loaded;
+  }, []);
+
+  const refreshState = useCallback(() => {
+    chrome.runtime.sendMessage(
+      { action: MSG.GET_STATE, domain, tabId: tabIdRef.current },
+      (response) => {
+        if (chrome.runtime.lastError) return;
+        applyStateResponse(response);
+      },
+    );
+  }, [domain, applyStateResponse]);
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -69,64 +100,39 @@ export function App() {
             setLoading(false);
             return;
           }
-          setGlobalEnabled(response?.globalEnabled ?? false);
-          if (response?.siteConfig) {
-            setSiteMode(response.siteConfig.enabled ?? 'auto');
-          } else {
-            setSiteMode('auto');
-          }
-          if (response?.darkDetection) {
-            setDarkDetection(response.darkDetection);
-          }
-
-          const opts: FilterOptions = response?.filterOptions ?? {};
-          const loaded: FilterValues = {
-            brightness: opts.brightness ?? 100,
-            contrast: opts.contrast ?? 100,
-            sepia: opts.sepia ?? 0,
-          };
-          setFilters(loaded);
-          filtersRef.current = loaded;
-
+          applyStateResponse(response);
           setLoading(false);
         },
       );
     });
-  }, []);
+  }, [applyStateResponse]);
 
-  const handleGlobalToggle = useCallback(() => {
-    const newEnabled = !globalEnabled;
-    setGlobalEnabled(newEnabled);
-    chrome.runtime.sendMessage({ action: MSG.SET_ENABLED, enabled: newEnabled }, () => {
+  const handleGlobalToggle = useCallback((checked: boolean) => {
+    setGlobalEnabled(checked);
+    chrome.runtime.sendMessage({ action: MSG.SET_ENABLED, enabled: checked }, () => {
       if (chrome.runtime.lastError) {
         console.error('[NightShift] Toggle failed:', chrome.runtime.lastError.message);
-        setGlobalEnabled(!newEnabled);
+        setGlobalEnabled(!checked);
       }
     });
-  }, [globalEnabled]);
+  }, []);
 
-  const handleSiteToggle = useCallback(() => {
-    if (!domain) return;
-    const next = cycleSiteMode(siteMode);
-    setSiteMode(next);
-    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('[NightShift] Site toggle failed:', chrome.runtime.lastError.message);
-        setSiteMode(siteMode);
-      }
-    });
-  }, [domain, siteMode]);
-
-  const handleApplyAnyway = useCallback(() => {
-    if (!domain) return;
-    setSiteMode(true);
-    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: true }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('[NightShift] Apply anyway failed:', chrome.runtime.lastError.message);
-        setSiteMode('auto');
-      }
-    });
-  }, [domain]);
+  const handleSiteSwitch = useCallback(
+    (checked: boolean) => {
+      if (!domain) return;
+      const prev = siteModeRef.current;
+      setSiteMode(checked);
+      siteModeRef.current = checked;
+      chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: checked }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('[NightShift] Site toggle failed:', chrome.runtime.lastError.message);
+          setSiteMode(prev);
+          siteModeRef.current = prev;
+        }
+      });
+    },
+    [domain],
+  );
 
   const sendFilterUpdate = useCallback((key: keyof FilterValues, value: number) => {
     const newFilters = { ...filtersRef.current, [key]: value };
@@ -166,9 +172,11 @@ export function App() {
     });
   }, []);
 
-  const effectiveEnabled = siteMode !== 'auto' ? siteMode : globalEnabled;
-  const siteLabel = siteMode === 'auto' ? 'Auto (global)' : siteMode ? 'Always ON' : 'Always OFF';
-  const showDetection = darkDetection?.isDark && siteMode === 'auto';
+  const { effectiveEnabled, detectionNotice } = resolveState({
+    globalEnabled,
+    siteMode,
+    darkDetection,
+  });
 
   if (restricted) {
     return (
@@ -190,7 +198,12 @@ export function App() {
       <div className="w-80 p-3">
         <Card>
           <CardContent className="pt-4">
-            <SitesManager onBack={() => setView('main')} />
+            <SitesManager
+              onBack={() => {
+                refreshState();
+                setView('main');
+              }}
+            />
           </CardContent>
         </Card>
       </div>
@@ -201,51 +214,36 @@ export function App() {
     <div className="w-80 p-3">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">NightShift</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">NightShift</CardTitle>
+            <Switch
+              checked={globalEnabled}
+              onCheckedChange={handleGlobalToggle}
+              disabled={loading}
+              aria-label="Global dark mode"
+            />
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {/* Master toggle */}
-          <Button
-            variant={globalEnabled ? 'secondary' : 'default'}
-            className="w-full"
-            onClick={handleGlobalToggle}
-            disabled={loading}
-          >
-            {loading ? 'Loading...' : globalEnabled ? 'Global: ON' : 'Global: OFF'}
-          </Button>
-
-          {/* Domain info + per-site toggle */}
-          {domain && (
+          {/* Per-site toggle — only when global is ON */}
+          {domain && globalEnabled && (
             <>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground truncate" title={domain}>
                   {domain}
                 </span>
-                <Button
-                  variant={effectiveEnabled ? 'secondary' : 'outline'}
-                  size="sm"
-                  onClick={handleSiteToggle}
+                <Switch
+                  checked={effectiveEnabled}
+                  onCheckedChange={handleSiteSwitch}
                   disabled={loading}
-                >
-                  {siteLabel}
-                </Button>
+                  aria-label={`Dark mode for ${domain}`}
+                />
               </div>
 
-              {/* Smart detection indicator */}
-              {showDetection && (
+              {/* Native dark mode detected — auto-skipped or overridden */}
+              {detectionNotice && (
                 <div className="rounded-md border border-yellow-600/30 bg-yellow-950/20 p-2">
-                  <p className="text-xs text-yellow-400">Native dark mode detected</p>
-                  {darkDetection.confidence === 'high' && (
-                    <p className="text-xs text-muted-foreground mt-0.5">Auto-skip active</p>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-1.5"
-                    onClick={handleApplyAnyway}
-                  >
-                    Apply anyway
-                  </Button>
+                  <p className="text-xs text-yellow-400">{detectionNotice}</p>
                 </div>
               )}
             </>
