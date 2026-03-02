@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Slider } from '@/components/ui/slider';
 
 type SiteMode = boolean | 'auto';
 
@@ -11,24 +12,53 @@ interface DarkDetection {
   signals: string[];
 }
 
+interface FilterValues {
+  brightness: number;
+  contrast: number;
+  sepia: number;
+}
+
+const DEFAULT_FILTERS: FilterValues = { brightness: 100, contrast: 100, sepia: 0 };
+
+const SLIDER_THROTTLE_MS = 100;
+
+function isRestricted(url: string | undefined): boolean {
+  if (!url) return true;
+  return /^(chrome|chrome-extension|about|file):/.test(url);
+}
+
 export function App() {
   const [globalEnabled, setGlobalEnabled] = useState(false);
   const [siteMode, setSiteMode] = useState<SiteMode>('auto');
   const [domain, setDomain] = useState<string | null>(null);
   const [darkDetection, setDarkDetection] = useState<DarkDetection | null>(null);
+  const [filters, setFilters] = useState<FilterValues>(DEFAULT_FILTERS);
   const [loading, setLoading] = useState(true);
+  const [restricted, setRestricted] = useState(false);
+
+  const tabIdRef = useRef<number | undefined>(undefined);
+  const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tab = tabs[0];
+
+      if (isRestricted(tab?.url)) {
+        setRestricted(true);
+        setLoading(false);
+        return;
+      }
+
       let tabDomain: string | null = null;
       if (tab?.url) {
         try {
           tabDomain = new URL(tab.url).hostname;
         } catch {
-          // chrome:// or other special URLs
+          // special URLs
         }
       }
+
+      tabIdRef.current = tab?.id;
       setDomain(tabDomain);
 
       chrome.runtime.sendMessage(
@@ -47,6 +77,14 @@ export function App() {
           if (response?.darkDetection) {
             setDarkDetection(response.darkDetection);
           }
+
+          const opts = response?.filterOptions ?? {};
+          setFilters({
+            brightness: opts.brightness ?? 100,
+            contrast: opts.contrast ?? 100,
+            sepia: opts.sepia ?? 0,
+          });
+
           setLoading(false);
         },
       );
@@ -61,7 +99,6 @@ export function App() {
 
   const handleSiteToggle = useCallback(() => {
     if (!domain) return;
-    // Cycle: auto → ON → OFF → auto
     let next: SiteMode;
     if (siteMode === 'auto') {
       next = true;
@@ -80,20 +117,57 @@ export function App() {
     chrome.runtime.sendMessage({ action: 'SET_SITE_ENABLED', domain, enabled: true });
   }, [domain]);
 
+  const sendFilterUpdate = useCallback(
+    (key: keyof FilterValues, value: number) => {
+      const newFilters = { ...filters, [key]: value };
+      setFilters(newFilters);
+
+      // Throttled single-hop: popup → content script (no background relay)
+      if (throttleRef.current) return;
+      throttleRef.current = setTimeout(() => {
+        throttleRef.current = null;
+        if (tabIdRef.current !== undefined) {
+          chrome.tabs.sendMessage(tabIdRef.current, {
+            action: 'UPDATE_FILTER',
+            options: newFilters,
+          });
+        }
+      }, SLIDER_THROTTLE_MS);
+    },
+    [filters],
+  );
+
+  const persistFilters = useCallback(() => {
+    chrome.runtime.sendMessage({ action: 'SET_FILTER_OPTIONS', options: filters });
+  }, [filters]);
+
   const effectiveEnabled = siteMode !== 'auto' ? siteMode : globalEnabled;
-
   const siteLabel = siteMode === 'auto' ? 'Auto (global)' : siteMode ? 'Always ON' : 'Always OFF';
-
-  // Show detection indicator when dark mode detected AND user hasn't overridden
   const showDetection = darkDetection?.isDark && siteMode === 'auto';
 
+  if (restricted) {
+    return (
+      <div className="w-80 p-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">NightShift</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Dark mode unavailable on this page</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-64 p-3">
+    <div className="w-80 p-3">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">NightShift</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+        <CardContent className="flex flex-col gap-3">
+          {/* Master toggle */}
           <Button
             variant={globalEnabled ? 'secondary' : 'default'}
             className="w-full"
@@ -103,21 +177,24 @@ export function App() {
             {loading ? 'Loading...' : globalEnabled ? 'Global: ON' : 'Global: OFF'}
           </Button>
 
+          {/* Domain info + per-site toggle */}
           {domain && (
             <>
-              <div className="text-xs text-muted-foreground truncate" title={domain}>
-                {domain}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground truncate" title={domain}>
+                  {domain}
+                </span>
+                <Button
+                  variant={effectiveEnabled ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={handleSiteToggle}
+                  disabled={loading}
+                >
+                  {siteLabel}
+                </Button>
               </div>
-              <Button
-                variant={effectiveEnabled ? 'secondary' : 'outline'}
-                size="sm"
-                className="w-full"
-                onClick={handleSiteToggle}
-                disabled={loading}
-              >
-                {siteLabel}
-              </Button>
 
+              {/* Smart detection indicator */}
               {showDetection && (
                 <div className="rounded-md border border-yellow-600/30 bg-yellow-950/20 p-2">
                   <p className="text-xs text-yellow-400">Natywny dark mode wykryty</p>
@@ -136,8 +213,74 @@ export function App() {
               )}
             </>
           )}
+
+          {/* Filter sliders — only when dark mode active */}
+          {effectiveEnabled && (
+            <div className="flex flex-col gap-2.5 pt-2 border-t border-border">
+              <SliderRow
+                label="Brightness"
+                value={filters.brightness}
+                min={50}
+                max={150}
+                onChange={(v) => sendFilterUpdate('brightness', v)}
+                onCommit={persistFilters}
+              />
+              <SliderRow
+                label="Contrast"
+                value={filters.contrast}
+                min={50}
+                max={150}
+                onChange={(v) => sendFilterUpdate('contrast', v)}
+                onCommit={persistFilters}
+              />
+              <SliderRow
+                label="Sepia"
+                value={filters.sepia}
+                min={0}
+                max={100}
+                onChange={(v) => sendFilterUpdate('sepia', v)}
+                onCommit={persistFilters}
+              />
+            </div>
+          )}
+
+          {/* CTA reserved space (S6 fills this) */}
+          <div className="min-h-8" />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-xs tabular-nums">{value}%</span>
+      </div>
+      <Slider
+        value={[value]}
+        min={min}
+        max={max}
+        step={1}
+        onValueChange={([v]) => onChange(v)}
+        onValueCommit={() => onCommit()}
+      />
     </div>
   );
 }
