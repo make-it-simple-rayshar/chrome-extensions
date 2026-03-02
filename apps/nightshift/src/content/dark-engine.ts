@@ -19,7 +19,6 @@ let oledObserver: MutationObserver | null = null;
 let throttleTimeout: ReturnType<typeof setTimeout> | null = null;
 let oledThrottleTimeout: ReturnType<typeof setTimeout> | null = null;
 let pendingMutations: MutationRecord[] = [];
-let oledPendingMutations: MutationRecord[] = [];
 const state: EngineState = { enabled: false, mode: 'filter', options: {} };
 
 function buildFilterValue(opts: FilterOptions): string {
@@ -139,12 +138,10 @@ const OLED_CSS = [
 function startOledObserver(): void {
   if (oledObserver) return;
 
-  oledObserver = new MutationObserver((mutations) => {
-    oledPendingMutations.push(...mutations);
+  oledObserver = new MutationObserver(() => {
     if (oledThrottleTimeout) return;
     oledThrottleTimeout = setTimeout(() => {
       oledThrottleTimeout = null;
-      oledPendingMutations = [];
       // OLED CSS uses broad selectors so new DOM nodes are auto-styled.
       // Observer exists to re-inject style if removed by page scripts.
       requestAnimationFrame(() => {
@@ -174,7 +171,6 @@ function stopOledObserver(): void {
     clearTimeout(oledThrottleTimeout);
     oledThrottleTimeout = null;
   }
-  oledPendingMutations = [];
 }
 
 export function applyOledMode(): void {

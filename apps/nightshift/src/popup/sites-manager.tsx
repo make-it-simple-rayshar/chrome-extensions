@@ -115,7 +115,12 @@ export function SitesManager({ onBack }: SitesManagerProps) {
       if (chrome.runtime.lastError) return;
       const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      chrome.downloads.download({ url, filename: 'nightshift-sites.json', saveAs: true });
+      chrome.downloads.download({ url, filename: 'nightshift-sites.json', saveAs: true }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('[NightShift] Export download failed:', chrome.runtime.lastError.message);
+        }
+        URL.revokeObjectURL(url);
+      });
     });
   }, []);
 
@@ -181,6 +186,8 @@ export function SitesManager({ onBack }: SitesManagerProps) {
           onClick={() => setTab('sites')}
           role="tab"
           aria-selected={tab === 'sites'}
+          aria-controls="tabpanel-sites"
+          id="tab-sites"
         >
           Sites
         </Button>
@@ -191,6 +198,8 @@ export function SitesManager({ onBack }: SitesManagerProps) {
           onClick={() => setTab('patterns')}
           role="tab"
           aria-selected={tab === 'patterns'}
+          aria-controls="tabpanel-patterns"
+          id="tab-patterns"
         >
           Patterns
         </Button>
@@ -201,6 +210,8 @@ export function SitesManager({ onBack }: SitesManagerProps) {
           onClick={() => setTab('bulk')}
           role="tab"
           aria-selected={tab === 'bulk'}
+          aria-controls="tabpanel-bulk"
+          id="tab-bulk"
         >
           Bulk
         </Button>
@@ -208,7 +219,7 @@ export function SitesManager({ onBack }: SitesManagerProps) {
 
       {/* Sites tab */}
       {tab === 'sites' && (
-        <>
+        <div role="tabpanel" id="tabpanel-sites" aria-labelledby="tab-sites">
           <input
             type="text"
             placeholder="Search domains..."
@@ -245,12 +256,12 @@ export function SitesManager({ onBack }: SitesManagerProps) {
               ))}
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Patterns tab */}
       {tab === 'patterns' && (
-        <>
+        <div role="tabpanel" id="tabpanel-patterns" aria-labelledby="tab-patterns">
           <div className="flex gap-1">
             <input
               type="text"
@@ -287,12 +298,12 @@ export function SitesManager({ onBack }: SitesManagerProps) {
               </Button>
             </div>
           ))}
-        </>
+        </div>
       )}
 
       {/* Bulk tab */}
       {tab === 'bulk' && (
-        <>
+        <div role="tabpanel" id="tabpanel-bulk" aria-labelledby="tab-bulk">
           <textarea
             placeholder="Paste domains, one per line..."
             aria-label="Bulk add domains"
@@ -304,11 +315,15 @@ export function SitesManager({ onBack }: SitesManagerProps) {
           <Button size="sm" onClick={handleBulkAdd} disabled={!bulkText.trim()}>
             Add All
           </Button>
-        </>
+        </div>
       )}
 
       {/* Import error feedback */}
-      {importError && <p className="text-xs text-destructive px-1">{importError}</p>}
+      {importError && (
+        <p role="alert" className="text-xs text-destructive px-1">
+          {importError}
+        </p>
+      )}
 
       {/* Footer actions */}
       <div className="flex gap-1 pt-1 border-t border-border">

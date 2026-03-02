@@ -471,6 +471,7 @@ function ProfileSelector({
               variant={activeProfile === p.id ? 'default' : 'outline'}
               className="text-xs h-7 px-2.5"
               onClick={() => onSelect(p.id)}
+              aria-pressed={activeProfile === p.id}
             >
               {p.name}
             </Button>
@@ -597,16 +598,18 @@ function ScheduleSection({
     onChange({ ...current, [field]: value });
   };
 
-  const handleCityChange = (cityName: string) => {
-    // Simple city → coords lookup for common cities
-    const cities: Record<string, { lat: number; lng: number }> = {
-      warsaw: { lat: 52.2297, lng: 21.0122 },
-      'new york': { lat: 40.7128, lng: -74.006 },
-      london: { lat: 51.5074, lng: -0.1278 },
-      tokyo: { lat: 35.6762, lng: 139.6503 },
-      berlin: { lat: 52.52, lng: 13.405 },
-      paris: { lat: 48.8566, lng: 2.3522 },
-    };
+  const cities: Record<string, { lat: number; lng: number }> = {
+    warsaw: { lat: 52.2297, lng: 21.0122 },
+    'new york': { lat: 40.7128, lng: -74.006 },
+    london: { lat: 51.5074, lng: -0.1278 },
+    tokyo: { lat: 35.6762, lng: 139.6503 },
+    berlin: { lat: 52.52, lng: 13.405 },
+    paris: { lat: 48.8566, lng: 2.3522 },
+  };
+
+  const [cityInput, setCityInput] = useState(current.cityName ?? '');
+
+  const commitCity = (cityName: string) => {
     const match = cities[cityName.toLowerCase()];
     onChange({
       ...current,
@@ -658,8 +661,15 @@ function ScheduleSection({
                 type="text"
                 className="h-7 rounded-md border border-input bg-background px-2 text-xs"
                 placeholder="Warsaw"
-                value={current.cityName ?? ''}
-                onChange={(e) => handleCityChange(e.target.value)}
+                value={cityInput}
+                onChange={(e) => {
+                  setCityInput(e.target.value);
+                  // Auto-commit when a known city is matched
+                  if (cities[e.target.value.toLowerCase()]) {
+                    commitCity(e.target.value);
+                  }
+                }}
+                onBlur={() => commitCity(cityInput)}
               />
               {!current.latitude && (
                 <p className="text-xs text-yellow-400">Enter a city to calculate sunrise/sunset</p>

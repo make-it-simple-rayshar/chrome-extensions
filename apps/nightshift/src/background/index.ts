@@ -189,6 +189,7 @@ function notifyTab(tabId: number, domain: string): void {
     {
       action: enabled ? MSG.APPLY_DARK : MSG.REMOVE_DARK,
       options: getEffectiveFilterOptions(domain),
+      darkMode: cachedState.darkMode,
     },
     { frameId: 0 },
     () => {
@@ -348,8 +349,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     case MSG.ADD_PATTERN: {
-      const pattern = msg.pattern as PerSitePattern;
-      cachedState.patterns = [...cachedState.patterns, pattern];
+      const pattern = msg.pattern;
+      if (
+        !pattern ||
+        typeof pattern.pattern !== 'string' ||
+        pattern.pattern.length === 0 ||
+        pattern.pattern.length > 253 ||
+        typeof pattern.enabled !== 'boolean'
+      ) {
+        sendResponse({ ok: false, error: 'Invalid pattern' });
+        return true;
+      }
+      cachedState.patterns = [...cachedState.patterns, pattern as PerSitePattern];
       saveState();
       notifyAllTabs();
       sendResponse({ ok: true });
@@ -366,12 +377,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     case MSG.IMPORT_SITES: {
-      const data = msg.data as {
-        perSite?: Record<string, PerSiteSettings>;
-        patterns?: PerSitePattern[];
-      };
-      if (data.perSite) cachedState.perSite = data.perSite;
-      if (data.patterns) cachedState.patterns = data.patterns;
+      const data = msg.data;
+      if (!data || typeof data !== 'object') {
+        sendResponse({ ok: false, error: 'Invalid import data' });
+        return true;
+      }
+      if (data.perSite && typeof data.perSite === 'object' && !Array.isArray(data.perSite)) {
+        cachedState.perSite = data.perSite as Record<string, PerSiteSettings>;
+      }
+      if (Array.isArray(data.patterns)) {
+        cachedState.patterns = data.patterns as PerSitePattern[];
+      }
       saveState();
       notifyAllTabs();
       sendResponse({ ok: true });

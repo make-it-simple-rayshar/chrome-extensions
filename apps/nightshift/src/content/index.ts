@@ -127,13 +127,23 @@ import {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     switch (msg.action) {
       case MSG.APPLY_DARK:
-        applyDarkMode(msg.options);
+        if (msg.darkMode === 'oled') {
+          applyOledMode();
+        } else {
+          applyDarkMode(msg.options);
+        }
         sendResponse({ ok: true });
         return true;
-      case MSG.REMOVE_DARK:
-        removeDarkMode();
+      case MSG.REMOVE_DARK: {
+        const mode = getEngineMode();
+        if (mode === 'oled') {
+          removeOledMode();
+        } else {
+          removeDarkMode();
+        }
         sendResponse({ ok: true });
         return true;
+      }
       case MSG.UPDATE_FILTER:
         updateFilter(msg.options);
         sendResponse({ ok: true });
