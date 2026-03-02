@@ -3,17 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
+import { MSG } from '../shared/messages';
+import type { DarkDetection, FilterOptions, SiteMode } from '../shared/types';
+import { cycleSiteMode } from '../shared/types';
 import { CTABanner } from './cta-banner';
 import { SitesManager } from './sites-manager';
 
 type PopupView = 'main' | 'sites';
-type SiteMode = boolean | 'auto';
-
-interface DarkDetection {
-  isDark: boolean;
-  confidence: 'high' | 'low' | 'none';
-  signals: string[];
-}
 
 interface FilterValues {
   brightness: number;
@@ -42,6 +38,7 @@ export function App() {
 
   const tabIdRef = useRef<number | undefined>(undefined);
   const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filtersRef = useRef<FilterValues>(DEFAULT_FILTERS);
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -66,7 +63,7 @@ export function App() {
       setDomain(tabDomain);
 
       chrome.runtime.sendMessage(
-        { action: 'GET_STATE', domain: tabDomain, tabId: tab?.id },
+        { action: MSG.GET_STATE, domain: tabDomain, tabId: tab?.id },
         (response) => {
           if (chrome.runtime.lastError) {
             setLoading(false);
@@ -82,12 +79,14 @@ export function App() {
             setDarkDetection(response.darkDetection);
           }
 
-          const opts = response?.filterOptions ?? {};
-          setFilters({
+          const opts: FilterOptions = response?.filterOptions ?? {};
+          const loaded: FilterValues = {
             brightness: opts.brightness ?? 100,
             contrast: opts.contrast ?? 100,
             sepia: opts.sepia ?? 0,
-          });
+          };
+          setFilters(loaded);
+          filtersRef.current = loaded;
 
           setLoading(false);
         },
@@ -98,52 +97,46 @@ export function App() {
   const handleGlobalToggle = useCallback(() => {
     const newEnabled = !globalEnabled;
     setGlobalEnabled(newEnabled);
-    chrome.runtime.sendMessage({ action: 'SET_ENABLED', enabled: newEnabled });
+    chrome.runtime.sendMessage({ action: MSG.SET_ENABLED, enabled: newEnabled });
   }, [globalEnabled]);
 
   const handleSiteToggle = useCallback(() => {
     if (!domain) return;
-    let next: SiteMode;
-    if (siteMode === 'auto') {
-      next = true;
-    } else if (siteMode === true) {
-      next = false;
-    } else {
-      next = 'auto';
-    }
+    const next = cycleSiteMode(siteMode);
     setSiteMode(next);
-    chrome.runtime.sendMessage({ action: 'SET_SITE_ENABLED', domain, enabled: next });
+    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next });
   }, [domain, siteMode]);
 
   const handleApplyAnyway = useCallback(() => {
     if (!domain) return;
     setSiteMode(true);
-    chrome.runtime.sendMessage({ action: 'SET_SITE_ENABLED', domain, enabled: true });
+    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: true });
   }, [domain]);
 
-  const sendFilterUpdate = useCallback(
-    (key: keyof FilterValues, value: number) => {
-      const newFilters = { ...filters, [key]: value };
-      setFilters(newFilters);
+  const sendFilterUpdate = useCallback((key: keyof FilterValues, value: number) => {
+    const newFilters = { ...filtersRef.current, [key]: value };
+    setFilters(newFilters);
+    filtersRef.current = newFilters;
 
-      // Throttled single-hop: popup → content script (no background relay)
-      if (throttleRef.current) return;
-      throttleRef.current = setTimeout(() => {
-        throttleRef.current = null;
-        if (tabIdRef.current !== undefined) {
-          chrome.tabs.sendMessage(tabIdRef.current, {
-            action: 'UPDATE_FILTER',
-            options: newFilters,
-          });
-        }
-      }, SLIDER_THROTTLE_MS);
-    },
-    [filters],
-  );
+    // Throttled single-hop: popup → content script (no background relay)
+    if (throttleRef.current) return;
+    throttleRef.current = setTimeout(() => {
+      throttleRef.current = null;
+      if (tabIdRef.current !== undefined) {
+        chrome.tabs.sendMessage(tabIdRef.current, {
+          action: MSG.UPDATE_FILTER,
+          options: filtersRef.current,
+        });
+      }
+    }, SLIDER_THROTTLE_MS);
+  }, []);
 
   const persistFilters = useCallback(() => {
-    chrome.runtime.sendMessage({ action: 'SET_FILTER_OPTIONS', options: filters });
-  }, [filters]);
+    chrome.runtime.sendMessage({
+      action: MSG.SET_FILTER_OPTIONS,
+      options: filtersRef.current,
+    });
+  }, []);
 
   const effectiveEnabled = siteMode !== 'auto' ? siteMode : globalEnabled;
   const siteLabel = siteMode === 'auto' ? 'Auto (global)' : siteMode ? 'Always ON' : 'Always OFF';

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-
-type SiteMode = boolean | 'auto';
+import { MSG } from '../shared/messages';
+import type { SiteMode } from '../shared/types';
+import { cycleSiteMode } from '../shared/types';
 
 interface SiteEntry {
   domain: string;
@@ -19,7 +20,7 @@ export function SitesManager({ onBack }: SitesManagerProps) {
   const [loading, setLoading] = useState(true);
 
   const loadSites = useCallback(() => {
-    chrome.runtime.sendMessage({ action: 'GET_ALL_SITES' }, (response) => {
+    chrome.runtime.sendMessage({ action: MSG.GET_ALL_SITES }, (response) => {
       if (chrome.runtime.lastError) {
         setLoading(false);
         return;
@@ -51,16 +52,9 @@ export function SitesManager({ onBack }: SitesManagerProps) {
       const site = sites.find((s) => s.domain === domain);
       if (!site) return;
 
-      let next: SiteMode;
-      if (site.enabled === 'auto') {
-        next = true;
-      } else if (site.enabled === true) {
-        next = false;
-      } else {
-        next = 'auto';
-      }
+      const next = cycleSiteMode(site.enabled);
 
-      chrome.runtime.sendMessage({ action: 'SET_SITE_ENABLED', domain, enabled: next });
+      chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next });
 
       setSites((prev) =>
         prev
@@ -72,7 +66,7 @@ export function SitesManager({ onBack }: SitesManagerProps) {
   );
 
   const handleResetAll = useCallback(() => {
-    chrome.runtime.sendMessage({ action: 'RESET_ALL_SITES' }, () => {
+    chrome.runtime.sendMessage({ action: MSG.RESET_ALL_SITES }, () => {
       if (chrome.runtime.lastError) return;
       setSites([]);
     });

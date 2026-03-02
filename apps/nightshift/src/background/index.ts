@@ -1,8 +1,5 @@
-interface FilterOptions {
-  brightness?: number;
-  contrast?: number;
-  sepia?: number;
-}
+import { MSG } from '../shared/messages';
+import type { DarkDetection, FilterOptions } from '../shared/types';
 
 interface PerSiteSettings {
   enabled: boolean | 'auto';
@@ -17,12 +14,6 @@ const DEFAULT_PER_SITE: PerSiteSettings = {
   contrast: 100,
   sepia: 0,
 };
-
-interface DarkDetection {
-  isDark: boolean;
-  confidence: 'high' | 'low' | 'none';
-  signals: string[];
-}
 
 // Transient per-tab detection state (not persisted to storage)
 const tabDetections: Record<number, DarkDetection> = {};
@@ -78,7 +69,7 @@ function notifyTab(tabId: number, domain: string): void {
   chrome.tabs.sendMessage(
     tabId,
     {
-      action: enabled ? 'APPLY_DARK' : 'REMOVE_DARK',
+      action: enabled ? MSG.APPLY_DARK : MSG.REMOVE_DARK,
       options: getEffectiveFilterOptions(domain),
     },
     () => {
@@ -98,6 +89,17 @@ function getDomainFromUrl(url: string | undefined): string | null {
   }
 }
 
+function notifyAllTabs(): void {
+  chrome.tabs.query({}, (tabs) => {
+    for (const tab of tabs) {
+      if (tab.id === undefined) continue;
+      const domain = getDomainFromUrl(tab.url);
+      if (!domain) continue;
+      notifyTab(tab.id, domain);
+    }
+  });
+}
+
 // Clean up detection state when tabs are closed or navigated
 chrome.tabs.onRemoved.addListener((tabId) => {
   delete tabDetections[tabId];
@@ -111,7 +113,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.action) {
-    case 'GET_STATE': {
+    case MSG.GET_STATE: {
       const domain = msg.domain ?? getDomainFromUrl(sender.tab?.url ?? sender.url);
       const effectiveEnabled = domain ? getEffectiveEnabled(domain) : cachedState.globalEnabled;
       const siteConfig = domain ? (cachedState.perSite[domain] ?? null) : null;
@@ -125,7 +127,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
 
       sendResponse({
-        ...cachedState,
+        globalEnabled: cachedState.globalEnabled,
+        filterOptions: cachedState.filterOptions,
         effectiveEnabled,
         siteConfig,
         domain,
@@ -134,24 +137,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
 
-    case 'SET_ENABLED': {
+    case MSG.SET_ENABLED: {
       cachedState.globalEnabled = msg.enabled;
       saveState();
-
-      // Notify all tabs — each gets its effective state based on per-site overrides
-      chrome.tabs.query({}, (tabs) => {
-        for (const tab of tabs) {
-          if (tab.id === undefined) continue;
-          const domain = getDomainFromUrl(tab.url);
-          if (!domain) continue;
-          notifyTab(tab.id, domain);
-        }
-      });
+      notifyAllTabs();
       sendResponse({ ok: true });
       return true;
     }
 
-    case 'SET_SITE_ENABLED': {
+    case MSG.SET_SITE_ENABLED: {
       const { domain, enabled } = msg as { domain: string; enabled: boolean | 'auto' };
       if (enabled === 'auto') {
         delete cachedState.perSite[domain];
@@ -177,22 +171,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
 
-    case 'SET_FILTER_OPTIONS': {
+    case MSG.SET_FILTER_OPTIONS: {
       cachedState.filterOptions = { ...cachedState.filterOptions, ...msg.options };
       saveState();
-
-      // Notify sender tab only
-      if (sender.tab?.id !== undefined) {
-        chrome.tabs.sendMessage(sender.tab.id, {
-          action: 'UPDATE_FILTER',
-          options: cachedState.filterOptions,
-        });
-      }
       sendResponse({ ok: true });
       return true;
     }
 
-    case 'ALREADY_DARK_DETECTED': {
+    case MSG.ALREADY_DARK_DETECTED: {
       const tabId = sender.tab?.id;
       if (tabId !== undefined && msg.detection) {
         tabDetections[tabId] = msg.detection;
@@ -201,31 +187,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
 
-    case 'GET_ALL_SITES': {
+    case MSG.GET_ALL_SITES: {
       sendResponse({ perSite: cachedState.perSite });
       return true;
     }
 
-    case 'RESET_ALL_SITES': {
+    case MSG.RESET_ALL_SITES: {
       cachedState.perSite = {};
       saveState();
-
-      // Notify all tabs to re-evaluate
-      chrome.tabs.query({}, (tabs) => {
-        for (const tab of tabs) {
-          if (tab.id === undefined) continue;
-          const domain = getDomainFromUrl(tab.url);
-          if (!domain) continue;
-          notifyTab(tab.id, domain);
-        }
-      });
+      notifyAllTabs();
       sendResponse({ ok: true });
       return true;
     }
-
-    case 'DARK_STATE_CHANGED':
-      sendResponse({ ok: true });
-      return true;
 
     default:
       return false;
