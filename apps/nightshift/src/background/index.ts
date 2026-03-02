@@ -8,6 +8,14 @@ import type {
   ScheduleConfig,
   SiteMode,
 } from '../shared/types';
+import {
+  ALARM_SAFETY_CHECK,
+  type SchedulerCallbacks,
+  applyCorrectStateForCurrentTime,
+  createScheduleAlarms,
+  getNextEventInfo,
+  handleAlarm,
+} from './scheduler';
 
 interface PerSiteSettings {
   enabled: boolean | 'auto';
@@ -58,6 +66,44 @@ const DEFAULT_STATE: GlobalState = {
 };
 
 let cachedState: GlobalState = { ...DEFAULT_STATE, perSite: {} };
+
+// --- Scheduler callbacks (used by alarm handlers) ---
+const schedulerCallbacks: SchedulerCallbacks = {
+  getState: () => ({
+    schedule: cachedState.schedule,
+    globalEnabled: cachedState.globalEnabled,
+    scheduleOverrideUntil: cachedState.scheduleOverrideUntil,
+  }),
+  setEnabled: (enabled) => {
+    cachedState.globalEnabled = enabled;
+    notifyAllTabs();
+  },
+  clearOverride: () => {
+    cachedState.scheduleOverrideUntil = null;
+  },
+  saveState,
+};
+
+// === TOP LEVEL — synchronous listeners (MV3 requirement) ===
+chrome.alarms.onAlarm.addListener((alarm) => handleAlarm(alarm, schedulerCallbacks));
+
+chrome.runtime.onStartup.addListener(() => {
+  chrome.storage.local.get('nightshift_state', (result) => {
+    if (result.nightshift_state) {
+      const loaded = result.nightshift_state as GlobalState;
+      cachedState = { ...DEFAULT_STATE, ...loaded, perSite: loaded.perSite ?? {} };
+    }
+    createScheduleAlarms(cachedState.schedule);
+    applyCorrectStateForCurrentTime(schedulerCallbacks);
+  });
+});
+
+// Safety-check alarm guard — ensure periodic alarm exists
+chrome.alarms.get(ALARM_SAFETY_CHECK, (alarm) => {
+  if (!alarm && cachedState.schedule?.enabled) {
+    chrome.alarms.create(ALARM_SAFETY_CHECK, { periodInMinutes: 60 });
+  }
+});
 
 // Load state from storage on startup
 chrome.storage.local.get('nightshift_state', (result) => {
@@ -176,12 +222,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         domain,
         darkDetection,
         darkMode: cachedState.darkMode,
+        schedule: cachedState.schedule,
+        scheduleOverrideUntil: cachedState.scheduleOverrideUntil,
       });
       return true;
     }
 
     case MSG.SET_ENABLED: {
       cachedState.globalEnabled = msg.enabled;
+      // Manual override: if schedule is active, pause until next natural event
+      if (cachedState.schedule?.enabled) {
+        const nextEvent = getNextEventInfo(cachedState.schedule);
+        if (nextEvent) {
+          cachedState.scheduleOverrideUntil = nextEvent.time;
+        }
+      }
       saveState();
       notifyAllTabs();
       sendResponse({ ok: true });
@@ -255,6 +310,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       saveState();
       notifyAllTabs();
       sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.SET_SCHEDULE: {
+      const schedule = msg.schedule as ScheduleConfig | null;
+      cachedState.schedule = schedule;
+      cachedState.scheduleOverrideUntil = null;
+      saveState();
+      createScheduleAlarms(schedule);
+      if (schedule?.enabled) {
+        applyCorrectStateForCurrentTime(schedulerCallbacks);
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    case MSG.GET_SCHEDULE: {
+      const nextEvent = getNextEventInfo(cachedState.schedule);
+      sendResponse({
+        schedule: cachedState.schedule,
+        scheduleOverrideUntil: cachedState.scheduleOverrideUntil,
+        nextEvent,
+      });
       return true;
     }
 

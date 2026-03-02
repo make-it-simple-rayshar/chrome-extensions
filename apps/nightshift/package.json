@@ -22,6 +22,7 @@
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "suncalc": "^1.9.0",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
@@ -30,6 +31,7 @@
     "@types/chrome": "^0.0.300",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/suncalc": "^1.9.2",
     "@vitejs/plugin-react": "^4.0.0",
     "concurrently": "^9.0.0",
     "shadcn": "^3.8.5",

@@ -6,7 +6,13 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { MSG } from '../shared/messages';
 import { resolveState } from '../shared/state-resolver';
-import type { DarkDetection, DarkMode, FilterOptions, SiteMode } from '../shared/types';
+import type {
+  DarkDetection,
+  DarkMode,
+  FilterOptions,
+  ScheduleConfig,
+  SiteMode,
+} from '../shared/types';
 import { CTABanner } from './cta-banner';
 import { SitesManager } from './sites-manager';
 
@@ -37,6 +43,9 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [restricted, setRestricted] = useState(false);
   const [view, setView] = useState<PopupView>('main');
+  const [schedule, setSchedule] = useState<ScheduleConfig | null>(null);
+  const [scheduleOverride, setScheduleOverride] = useState<number | null>(null);
+  const [nextEvent, setNextEvent] = useState<{ type: 'on' | 'off'; time: number } | null>(null);
 
   const tabIdRef = useRef<number | undefined>(undefined);
   const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,6 +70,12 @@ export function App() {
     };
     setFilters(loaded);
     filtersRef.current = loaded;
+    if (response?.schedule !== undefined) {
+      setSchedule((response.schedule as ScheduleConfig) ?? null);
+    }
+    if (response?.scheduleOverrideUntil !== undefined) {
+      setScheduleOverride((response.scheduleOverrideUntil as number) ?? null);
+    }
   }, []);
 
   const refreshState = useCallback(() => {
@@ -103,7 +118,15 @@ export function App() {
             return;
           }
           applyStateResponse(response);
-          setLoading(false);
+          // Fetch schedule info
+          chrome.runtime.sendMessage({ action: MSG.GET_SCHEDULE }, (schedResp) => {
+            if (!chrome.runtime.lastError && schedResp) {
+              setSchedule((schedResp.schedule as ScheduleConfig) ?? null);
+              setScheduleOverride((schedResp.scheduleOverrideUntil as number) ?? null);
+              setNextEvent((schedResp.nextEvent as { type: 'on' | 'off'; time: number }) ?? null);
+            }
+            setLoading(false);
+          });
         },
       );
     });
@@ -181,6 +204,23 @@ export function App() {
         console.error('[NightShift] Mode switch failed:', chrome.runtime.lastError.message);
         setDarkMode(mode === 'oled' ? 'filter' : 'oled');
       }
+    });
+  }, []);
+
+  const handleScheduleChange = useCallback((newSchedule: ScheduleConfig | null) => {
+    setSchedule(newSchedule);
+    chrome.runtime.sendMessage({ action: MSG.SET_SCHEDULE, schedule: newSchedule }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[NightShift] Schedule update failed:', chrome.runtime.lastError.message);
+        return;
+      }
+      // Refresh next event info
+      chrome.runtime.sendMessage({ action: MSG.GET_SCHEDULE }, (resp) => {
+        if (!chrome.runtime.lastError && resp) {
+          setNextEvent((resp.nextEvent as { type: 'on' | 'off'; time: number }) ?? null);
+          setScheduleOverride((resp.scheduleOverrideUntil as number) ?? null);
+        }
+      });
     });
   }, []);
 
@@ -284,6 +324,16 @@ export function App() {
             </div>
           )}
 
+          {/* Schedule section */}
+          {globalEnabled && (
+            <ScheduleSection
+              schedule={schedule}
+              scheduleOverride={scheduleOverride}
+              nextEvent={nextEvent}
+              onChange={handleScheduleChange}
+            />
+          )}
+
           {/* Filter sliders — only when dark mode active AND filter mode */}
           {effectiveEnabled && darkMode === 'filter' && (
             <div className="flex flex-col gap-2.5 pt-2 border-t border-border">
@@ -328,6 +378,158 @@ export function App() {
           <CTABanner />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+const DEFAULT_SCHEDULE: ScheduleConfig = {
+  enabled: false,
+  mode: 'manual',
+  manualStart: '20:00',
+  manualEnd: '07:00',
+};
+
+function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function ScheduleSection({
+  schedule,
+  scheduleOverride,
+  nextEvent,
+  onChange,
+}: {
+  schedule: ScheduleConfig | null;
+  scheduleOverride: number | null;
+  nextEvent: { type: 'on' | 'off'; time: number } | null;
+  onChange: (schedule: ScheduleConfig | null) => void;
+}) {
+  const current = schedule ?? DEFAULT_SCHEDULE;
+
+  const handleToggle = (checked: boolean) => {
+    onChange({ ...current, enabled: checked });
+  };
+
+  const handleModeChange = (mode: 'manual' | 'sun') => {
+    onChange({ ...current, mode });
+  };
+
+  const handleTimeChange = (field: 'manualStart' | 'manualEnd', value: string) => {
+    onChange({ ...current, [field]: value });
+  };
+
+  const handleCityChange = (cityName: string) => {
+    // Simple city → coords lookup for common cities
+    const cities: Record<string, { lat: number; lng: number }> = {
+      warsaw: { lat: 52.2297, lng: 21.0122 },
+      'new york': { lat: 40.7128, lng: -74.006 },
+      london: { lat: 51.5074, lng: -0.1278 },
+      tokyo: { lat: 35.6762, lng: 139.6503 },
+      berlin: { lat: 52.52, lng: 13.405 },
+      paris: { lat: 48.8566, lng: 2.3522 },
+    };
+    const match = cities[cityName.toLowerCase()];
+    onChange({
+      ...current,
+      cityName,
+      latitude: match?.lat ?? current.latitude,
+      longitude: match?.lng ?? current.longitude,
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-2 pt-2 border-t border-border">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">Auto schedule</span>
+        <Switch
+          checked={current.enabled}
+          onCheckedChange={handleToggle}
+          aria-label="Auto schedule"
+        />
+      </div>
+
+      {current.enabled && (
+        <>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={current.mode === 'sun' ? 'default' : 'outline'}
+              className="flex-1 text-xs"
+              onClick={() => handleModeChange('sun')}
+            >
+              Sunset/sunrise
+            </Button>
+            <Button
+              size="sm"
+              variant={current.mode === 'manual' ? 'default' : 'outline'}
+              className="flex-1 text-xs"
+              onClick={() => handleModeChange('manual')}
+            >
+              Custom times
+            </Button>
+          </div>
+
+          {current.mode === 'sun' && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="schedule-city" className="text-xs text-muted-foreground">
+                City
+              </label>
+              <input
+                id="schedule-city"
+                type="text"
+                className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+                placeholder="Warsaw"
+                value={current.cityName ?? ''}
+                onChange={(e) => handleCityChange(e.target.value)}
+              />
+              {!current.latitude && (
+                <p className="text-xs text-yellow-400">Enter a city to calculate sunrise/sunset</p>
+              )}
+            </div>
+          )}
+
+          {current.mode === 'manual' && (
+            <div className="flex gap-2">
+              <div className="flex flex-col gap-1 flex-1">
+                <label htmlFor="schedule-start" className="text-xs text-muted-foreground">
+                  Start
+                </label>
+                <input
+                  id="schedule-start"
+                  type="time"
+                  className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+                  value={current.manualStart}
+                  onChange={(e) => handleTimeChange('manualStart', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1">
+                <label htmlFor="schedule-end" className="text-xs text-muted-foreground">
+                  End
+                </label>
+                <input
+                  id="schedule-end"
+                  type="time"
+                  className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+                  value={current.manualEnd}
+                  onChange={(e) => handleTimeChange('manualEnd', e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Status line */}
+          {scheduleOverride ? (
+            <p className="text-xs text-yellow-400">
+              Schedule paused (manual override) — resumes at {formatTime(scheduleOverride)}
+            </p>
+          ) : nextEvent ? (
+            <p className="text-xs text-muted-foreground">
+              Dark mode turns {nextEvent.type === 'on' ? 'ON' : 'OFF'} at{' '}
+              {formatTime(nextEvent.time)}
+            </p>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
