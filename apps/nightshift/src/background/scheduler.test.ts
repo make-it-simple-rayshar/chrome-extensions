@@ -1,6 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ScheduleConfig } from '../shared/types';
-import { computeNextEvent, isInActiveWindow } from './scheduler';
+import {
+  type SchedulerCallbacks,
+  applyCorrectStateForCurrentTime,
+  computeNextEvent,
+  isInActiveWindow,
+} from './scheduler';
+
+// Minimal chrome.alarms mock for applyCorrectStateForCurrentTime tests
+beforeAll(() => {
+  if (typeof globalThis.chrome === 'undefined') {
+    (globalThis as Record<string, unknown>).chrome = {
+      alarms: {
+        create: vi.fn(),
+        clear: vi.fn(),
+        get: vi.fn((_name: string, cb: (alarm: unknown) => void) => cb(null)),
+      },
+    };
+  }
+});
 
 describe('scheduler', () => {
   describe('computeNextEvent (manual mode)', () => {
@@ -17,8 +35,8 @@ describe('scheduler', () => {
       expect(result.type).toBe('on');
       // Should be today at 20:00
       const eventDate = new Date(result.time);
-      expect(eventDate.getUTCHours()).toBe(20);
-      expect(eventDate.getUTCMinutes()).toBe(0);
+      expect(eventDate.getHours()).toBe(20);
+      expect(eventDate.getMinutes()).toBe(0);
     });
 
     it('returns "off" event when inside active window (after start, before midnight)', () => {
@@ -34,8 +52,8 @@ describe('scheduler', () => {
       expect(result.type).toBe('off');
       // Should be tomorrow at 07:00
       const eventDate = new Date(result.time);
-      expect(eventDate.getUTCDate()).toBe(3);
-      expect(eventDate.getUTCHours()).toBe(7);
+      expect(eventDate.getDate()).toBe(3);
+      expect(eventDate.getHours()).toBe(7);
     });
 
     it('returns "off" event when inside active window (after midnight, before end)', () => {
@@ -51,8 +69,8 @@ describe('scheduler', () => {
       expect(result.type).toBe('off');
       // Should be today at 07:00
       const eventDate = new Date(result.time);
-      expect(eventDate.getUTCDate()).toBe(3);
-      expect(eventDate.getUTCHours()).toBe(7);
+      expect(eventDate.getDate()).toBe(3);
+      expect(eventDate.getHours()).toBe(7);
     });
 
     it('returns "on" event when after end time but before next start', () => {
@@ -67,7 +85,7 @@ describe('scheduler', () => {
       const result = computeNextEvent(config, now);
       expect(result.type).toBe('on');
       const eventDate = new Date(result.time);
-      expect(eventDate.getUTCHours()).toBe(20);
+      expect(eventDate.getHours()).toBe(20);
     });
 
     it('handles same-day schedule (start < end)', () => {
@@ -82,7 +100,7 @@ describe('scheduler', () => {
       const result = computeNextEvent(config, now);
       expect(result.type).toBe('off');
       const eventDate = new Date(result.time);
-      expect(eventDate.getUTCHours()).toBe(17);
+      expect(eventDate.getHours()).toBe(17);
     });
   });
 
@@ -158,6 +176,111 @@ describe('scheduler', () => {
     });
   });
 
+  describe('applyCorrectStateForCurrentTime', () => {
+    const manualConfig: ScheduleConfig = {
+      enabled: true,
+      mode: 'manual',
+      manualStart: '20:00',
+      manualEnd: '07:00',
+    };
+
+    function makeCallbacks(overrides: {
+      schedule?: ScheduleConfig | null;
+      globalEnabled?: boolean;
+      scheduleOverrideUntil?: number | null;
+    }): SchedulerCallbacks & {
+      setEnabledCalls: boolean[];
+      clearOverrideCalled: boolean;
+      saveStateCalled: boolean;
+    } {
+      const state = {
+        schedule: overrides.schedule ?? null,
+        globalEnabled: overrides.globalEnabled ?? false,
+        scheduleOverrideUntil: overrides.scheduleOverrideUntil ?? null,
+      };
+      const cb = {
+        getState: () => state,
+        setEnabled: vi.fn((enabled: boolean) => {
+          state.globalEnabled = enabled;
+          cb.setEnabledCalls.push(enabled);
+        }),
+        clearOverride: vi.fn(() => {
+          state.scheduleOverrideUntil = null;
+          cb.clearOverrideCalled = true;
+        }),
+        saveState: vi.fn(() => {
+          cb.saveStateCalled = true;
+        }),
+        setEnabledCalls: [] as boolean[],
+        clearOverrideCalled: false,
+        saveStateCalled: false,
+      };
+      return cb;
+    }
+
+    it('does nothing when schedule is null', () => {
+      const cb = makeCallbacks({ schedule: null });
+      applyCorrectStateForCurrentTime(cb);
+      expect(cb.setEnabled).not.toHaveBeenCalled();
+      expect(cb.saveState).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when schedule is disabled', () => {
+      const cb = makeCallbacks({
+        schedule: { ...manualConfig, enabled: false },
+      });
+      applyCorrectStateForCurrentTime(cb);
+      expect(cb.setEnabled).not.toHaveBeenCalled();
+    });
+
+    it('respects active manual override', () => {
+      const cb = makeCallbacks({
+        schedule: manualConfig,
+        globalEnabled: false,
+        scheduleOverrideUntil: Date.now() + 3600000, // 1h from now
+      });
+      applyCorrectStateForCurrentTime(cb);
+      expect(cb.setEnabled).not.toHaveBeenCalled();
+      expect(cb.clearOverrideCalled).toBe(false);
+    });
+
+    it('clears expired override and applies correct state', () => {
+      const cb = makeCallbacks({
+        schedule: manualConfig,
+        globalEnabled: false,
+        scheduleOverrideUntil: Date.now() - 1000, // expired
+      });
+      applyCorrectStateForCurrentTime(cb);
+      expect(cb.clearOverrideCalled).toBe(true);
+      expect(cb.saveState).toHaveBeenCalled();
+    });
+
+    it('calls setEnabled when globalEnabled mismatches active window', () => {
+      // We can't mock Date inside isInActiveWindow, so we test that
+      // setEnabled IS called when the state doesn't match the window.
+      // Use a same-day config where we know the current time's position.
+      const now = new Date();
+      const h = now.getHours();
+
+      // Create a window that we know the current time is inside/outside
+      const insideConfig: ScheduleConfig = {
+        enabled: true,
+        mode: 'manual',
+        manualStart: `${String(h).padStart(2, '0')}:00`,
+        manualEnd: `${String((h + 2) % 24).padStart(2, '0')}:00`,
+      };
+
+      // globalEnabled=false but we ARE in the window → should call setEnabled(true)
+      const cb = makeCallbacks({
+        schedule: insideConfig,
+        globalEnabled: false,
+      });
+
+      applyCorrectStateForCurrentTime(cb);
+      expect(cb.setEnabledCalls).toContain(true);
+    });
+  });
+
   describe('computeNextEvent (sun mode)', () => {
     it('computes sunset event when sun is up', () => {
       const config: ScheduleConfig = {
@@ -175,8 +298,8 @@ describe('scheduler', () => {
       expect(result.type).toBe('on');
       // Warsaw sunset in June is around 21:00 UTC+2 = 19:00 UTC
       const eventDate = new Date(result.time);
-      expect(eventDate.getUTCHours()).toBeGreaterThanOrEqual(17);
-      expect(eventDate.getUTCHours()).toBeLessThanOrEqual(22);
+      expect(eventDate.getHours()).toBeGreaterThanOrEqual(17);
+      expect(eventDate.getHours()).toBeLessThanOrEqual(22);
     });
 
     it('computes sunrise event when sun is down', () => {
@@ -195,8 +318,8 @@ describe('scheduler', () => {
       expect(result.type).toBe('off');
       // Warsaw sunrise in June is around 04:15 UTC+2 = 02:15 UTC
       const eventDate = new Date(result.time);
-      expect(eventDate.getUTCHours()).toBeGreaterThanOrEqual(1);
-      expect(eventDate.getUTCHours()).toBeLessThanOrEqual(6);
+      expect(eventDate.getHours()).toBeGreaterThanOrEqual(1);
+      expect(eventDate.getHours()).toBeLessThanOrEqual(6);
     });
   });
 });

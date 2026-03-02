@@ -22,6 +22,17 @@ describe('patternMatch', () => {
   it('does not match unrelated domain', () => {
     expect(patternMatch('*.google.com', 'example.com')).toBe(false);
   });
+
+  it('treats regex metacharacters as literal text', () => {
+    expect(patternMatch('(a+)+b', 'example.com')).toBe(false);
+    expect(patternMatch('evil|good.com', 'evil.com')).toBe(false);
+  });
+
+  it('does not freeze on ReDoS patterns', () => {
+    const start = performance.now();
+    patternMatch('(a+)+b', 'aaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(performance.now() - start).toBeLessThan(50);
+  });
 });
 
 describe('resolveSiteMode', () => {

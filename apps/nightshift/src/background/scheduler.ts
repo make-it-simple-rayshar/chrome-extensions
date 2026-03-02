@@ -13,13 +13,13 @@ function parseTime(timeStr: string): { hours: number; minutes: number } {
 
 function setTimeOnDate(date: Date, hours: number, minutes: number): Date {
   const d = new Date(date);
-  d.setUTCHours(hours, minutes, 0, 0);
+  d.setHours(hours, minutes, 0, 0);
   return d;
 }
 
 function addDays(date: Date, days: number): Date {
   const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() + days);
+  d.setDate(d.getDate() + days);
   return d;
 }
 
@@ -44,7 +44,7 @@ export function isInActiveWindow(config: ScheduleConfig, now: Date = new Date())
   // Manual mode
   const { hours: startH, minutes: startM } = parseTime(config.manualStart);
   const { hours: endH, minutes: endM } = parseTime(config.manualEnd);
-  const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const startMinutes = startH * 60 + startM;
   const endMinutes = endH * 60 + endM;
 

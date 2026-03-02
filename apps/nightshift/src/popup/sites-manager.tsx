@@ -57,7 +57,11 @@ export function SitesManager({ onBack }: SitesManagerProps) {
 
   const handleToggle = useCallback((domain: string, checked: boolean) => {
     const next: SiteMode = checked;
-    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next });
+    chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: next }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[NightShift] Site toggle failed:', chrome.runtime.lastError.message);
+      }
+    });
     setSites((prev) => prev.map((s) => (s.domain === domain ? { ...s, enabled: next } : s)));
   }, []);
 
@@ -92,11 +96,18 @@ export function SitesManager({ onBack }: SitesManagerProps) {
       .map((d) => d.trim())
       .filter((d) => d.length > 0);
     if (domains.length === 0) return;
+    const perSite: Record<string, { enabled: boolean }> = {};
     for (const domain of domains) {
-      chrome.runtime.sendMessage({ action: MSG.SET_SITE_ENABLED, domain, enabled: false });
+      perSite[domain] = { enabled: false };
     }
+    chrome.runtime.sendMessage({ action: MSG.IMPORT_SITES, data: { perSite } }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[NightShift] Bulk add failed:', chrome.runtime.lastError.message);
+        return;
+      }
+      loadSites();
+    });
     setBulkText('');
-    setTimeout(loadSites, 300);
   }, [bulkText, loadSites]);
 
   const handleExport = useCallback(() => {
@@ -104,28 +115,46 @@ export function SitesManager({ onBack }: SitesManagerProps) {
       if (chrome.runtime.lastError) return;
       const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'nightshift-sites.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      chrome.downloads.download({ url, filename: 'nightshift-sites.json', saveAs: true });
     });
   }, []);
+
+  const [importError, setImportError] = useState<string | null>(null);
 
   const handleImport = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      setImportError(null);
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const data = JSON.parse(reader.result as string);
+          const raw = JSON.parse(reader.result as string);
+          // Validate shape: must have perSite (object) or patterns (array)
+          if (typeof raw !== 'object' || raw === null) {
+            setImportError('Invalid format: expected JSON object');
+            return;
+          }
+          const data: { perSite?: unknown; patterns?: unknown } = {};
+          if (raw.perSite && typeof raw.perSite === 'object' && !Array.isArray(raw.perSite)) {
+            data.perSite = raw.perSite;
+          }
+          if (Array.isArray(raw.patterns)) {
+            data.patterns = raw.patterns;
+          }
+          if (!data.perSite && !data.patterns) {
+            setImportError('No valid perSite or patterns found in file');
+            return;
+          }
           chrome.runtime.sendMessage({ action: MSG.IMPORT_SITES, data }, () => {
-            if (chrome.runtime.lastError) return;
+            if (chrome.runtime.lastError) {
+              setImportError('Import failed');
+              return;
+            }
             loadSites();
           });
         } catch {
-          console.error('[NightShift] Invalid JSON import');
+          setImportError('Invalid JSON file');
         }
       };
       reader.readAsText(file);
@@ -144,12 +173,14 @@ export function SitesManager({ onBack }: SitesManagerProps) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1">
+      <div className="flex gap-1" role="tablist" aria-label="Site management tabs">
         <Button
           size="sm"
           variant={tab === 'sites' ? 'default' : 'outline'}
           className="flex-1 text-xs"
           onClick={() => setTab('sites')}
+          role="tab"
+          aria-selected={tab === 'sites'}
         >
           Sites
         </Button>
@@ -158,6 +189,8 @@ export function SitesManager({ onBack }: SitesManagerProps) {
           variant={tab === 'patterns' ? 'default' : 'outline'}
           className="flex-1 text-xs"
           onClick={() => setTab('patterns')}
+          role="tab"
+          aria-selected={tab === 'patterns'}
         >
           Patterns
         </Button>
@@ -166,6 +199,8 @@ export function SitesManager({ onBack }: SitesManagerProps) {
           variant={tab === 'bulk' ? 'default' : 'outline'}
           className="flex-1 text-xs"
           onClick={() => setTab('bulk')}
+          role="tab"
+          aria-selected={tab === 'bulk'}
         >
           Bulk
         </Button>
@@ -271,6 +306,9 @@ export function SitesManager({ onBack }: SitesManagerProps) {
           </Button>
         </>
       )}
+
+      {/* Import error feedback */}
+      {importError && <p className="text-xs text-destructive px-1">{importError}</p>}
 
       {/* Footer actions */}
       <div className="flex gap-1 pt-1 border-t border-border">

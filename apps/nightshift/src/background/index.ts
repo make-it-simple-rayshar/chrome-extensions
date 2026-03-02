@@ -107,35 +107,7 @@ const schedulerCallbacks: SchedulerCallbacks = {
 // === TOP LEVEL — synchronous listeners (MV3 requirement) ===
 chrome.alarms.onAlarm.addListener((alarm) => handleAlarm(alarm, schedulerCallbacks));
 
-chrome.runtime.onStartup.addListener(() => {
-  chrome.storage.local.get('nightshift_state', (result) => {
-    if (result.nightshift_state) {
-      const loaded = result.nightshift_state as GlobalState;
-      cachedState = {
-        ...DEFAULT_STATE,
-        ...loaded,
-        perSite: loaded.perSite ?? {},
-        patterns: loaded.patterns ?? [],
-      };
-    }
-    createScheduleAlarms(cachedState.schedule);
-    applyCorrectStateForCurrentTime(schedulerCallbacks);
-  });
-});
-
-// Safety-check alarm guard — ensure periodic alarm exists
-chrome.alarms.get(ALARM_SAFETY_CHECK, (alarm) => {
-  if (!alarm && cachedState.schedule?.enabled) {
-    chrome.alarms.create(ALARM_SAFETY_CHECK, { periodInMinutes: 60 });
-  }
-});
-
-// Load state from storage on startup
-chrome.storage.local.get('nightshift_state', (result) => {
-  if (chrome.runtime.lastError) {
-    console.error('[NightShift] Failed to load state:', chrome.runtime.lastError.message);
-    return;
-  }
+function hydrateState(result: Record<string, unknown>): void {
   if (result.nightshift_state) {
     const loaded = result.nightshift_state as GlobalState;
     cachedState = {
@@ -145,6 +117,35 @@ chrome.storage.local.get('nightshift_state', (result) => {
       patterns: loaded.patterns ?? [],
     };
   }
+}
+
+function initializeScheduler(): void {
+  createScheduleAlarms(cachedState.schedule);
+  applyCorrectStateForCurrentTime(schedulerCallbacks);
+}
+
+chrome.runtime.onStartup.addListener(() => {
+  chrome.storage.local.get('nightshift_state', (result) => {
+    if (chrome.runtime.lastError) {
+      console.error(
+        '[NightShift] Failed to load state on startup:',
+        chrome.runtime.lastError.message,
+      );
+      return;
+    }
+    hydrateState(result);
+    initializeScheduler();
+  });
+});
+
+// Load state from storage on install/update (when onStartup does NOT fire)
+chrome.storage.local.get('nightshift_state', (result) => {
+  if (chrome.runtime.lastError) {
+    console.error('[NightShift] Failed to load state:', chrome.runtime.lastError.message);
+    return;
+  }
+  hydrateState(result);
+  initializeScheduler();
 });
 
 function saveState(): void {

@@ -240,6 +240,11 @@ export function App() {
   const handleCreateProfile = useCallback(
     (name: string) => {
       const id = name.toLowerCase().replace(/\s+/g, '-');
+      const reserved = ['default', 'night-reading', 'oled'];
+      if (reserved.includes(id)) {
+        console.warn(`[NightShift] Cannot overwrite built-in profile: ${id}`);
+        return;
+      }
       const profile: ColorProfile = {
         id,
         name,
@@ -472,7 +477,7 @@ function ProfileSelector({
             {p.id !== 'default' && activeProfile === p.id && (
               <button
                 type="button"
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 onClick={() => setConfirmDelete(p.id)}
                 aria-label={`Delete ${p.name}`}
               >
@@ -498,6 +503,7 @@ function ProfileSelector({
             type="text"
             className="flex-1 h-7 rounded-md border border-input bg-background px-2 text-xs"
             placeholder="Profile name"
+            aria-label="New profile name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
@@ -521,7 +527,12 @@ function ProfileSelector({
 
       {/* Delete confirmation */}
       {confirmDelete && (
-        <div className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/10 p-2">
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-label={`Confirm deletion of ${profiles[confirmDelete]?.name}`}
+          className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/10 p-2"
+        >
           <span className="text-xs">Delete "{profiles[confirmDelete]?.name}"?</span>
           <div className="flex gap-1">
             <Button
