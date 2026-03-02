@@ -3,7 +3,7 @@
   "name": "NightShift — Dark Mode",
   "version": "0.1.0",
   "description": "Dark mode for any website — CSS filter inversion with smart detection",
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "downloads"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
