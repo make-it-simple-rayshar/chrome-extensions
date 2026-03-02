@@ -1,6 +1,13 @@
 import { MSG } from '../shared/messages';
 import { resolveState } from '../shared/state-resolver';
-import type { DarkDetection, FilterOptions, SiteMode } from '../shared/types';
+import type {
+  ColorProfile,
+  DarkDetection,
+  DarkMode,
+  FilterOptions,
+  ScheduleConfig,
+  SiteMode,
+} from '../shared/types';
 
 interface PerSiteSettings {
   enabled: boolean | 'auto';
@@ -23,12 +30,31 @@ interface GlobalState {
   globalEnabled: boolean;
   filterOptions: FilterOptions;
   perSite: Record<string, PerSiteSettings>;
+  schedule: ScheduleConfig | null;
+  darkMode: DarkMode;
+  activeProfile: string;
+  profiles: Record<string, ColorProfile>;
+  scheduleOverrideUntil: number | null;
 }
 
 const DEFAULT_STATE: GlobalState = {
   globalEnabled: false,
   filterOptions: {},
   perSite: {},
+  schedule: null,
+  darkMode: 'filter',
+  activeProfile: 'default',
+  profiles: {
+    default: {
+      id: 'default',
+      name: 'Standard',
+      darkMode: 'filter',
+      brightness: 100,
+      contrast: 100,
+      sepia: 0,
+    },
+  },
+  scheduleOverrideUntil: null,
 };
 
 let cachedState: GlobalState = { ...DEFAULT_STATE, perSite: {} };
@@ -63,6 +89,7 @@ function getEffectiveEnabled(domain: string, tabId?: number): boolean {
     globalEnabled: cachedState.globalEnabled,
     siteMode: getSiteMode(domain),
     darkDetection: detection,
+    darkMode: cachedState.darkMode,
   }).effectiveEnabled;
 }
 
@@ -203,6 +230,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         globalEnabled: cachedState.globalEnabled,
         siteMode: detDomain ? getSiteMode(detDomain) : 'auto',
         darkDetection: msg.detection ?? null,
+        darkMode: cachedState.darkMode,
       });
       sendResponse({ ok: true, autoSkip: autoSkipped });
       return true;
