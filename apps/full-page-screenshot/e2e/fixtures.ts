@@ -153,3 +153,26 @@ export async function waitForCaptureEnd(
   }
   throw new Error(`Capture did not complete within ${timeoutMs}ms`);
 }
+
+/**
+ * Waits for the popup to show either "Done!" or "Capture failed" text.
+ * Simpler alternative to waitForCaptureEnd — uses DOM visibility instead of
+ * message recording, so it works without installMessageRecorder.
+ */
+export async function waitForCaptureFinish(popup: Page, timeout = 30_000) {
+  const done = popup.getByText('Done! Screenshot saved.');
+  const error = popup.getByText('Capture failed', { exact: false });
+  await expect(done.or(error)).toBeVisible({ timeout });
+}
+
+/**
+ * Trigger a full-page capture on `targetPage` via the popup and wait for it to
+ * finish. Handles the bringToFront dance required so the background service
+ * worker's `getActiveTabId()` resolves to the target page.
+ */
+export async function triggerCaptureAndWait(popup: Page, targetPage: Page) {
+  await targetPage.bringToFront();
+  await popup.evaluate(() => chrome.runtime.sendMessage({ action: 'START_CAPTURE' }));
+  await popup.bringToFront();
+  await waitForCaptureFinish(popup);
+}
